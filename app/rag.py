@@ -62,18 +62,14 @@ _TOPIC_KEYWORDS: dict[str, str] = {
     "samba": "Samba",
     "référentiel": "REAC",
     "reac": "REAC",
-    "rncp31113": "RNCP31113",
-    "rncp31114": "RNCP31114",
-    "rncp 31113": "RNCP31113",
-    "rncp 31114": "RNCP31114",
 }
 
 
-def _detect_topic_filter(question: str) -> dict | None:
+def _detect_topic(question: str) -> str | None:
     q = question.lower()
     for keyword, doc_slug in _TOPIC_KEYWORDS.items():
         if keyword in q:
-            return {"source": {"$contains": doc_slug}}
+            return doc_slug
     return None
 
 
@@ -88,15 +84,19 @@ def _dedup_chunks(chunks: list[dict]) -> list[dict]:
     return result
 
 
-def _merge_dedup(filtered: list[dict], general: list[dict]) -> list[dict]:
-    seen = set()
-    result = []
-    for c in filtered + general:
-        h = hash(c["content"])
-        if h not in seen:
-            seen.add(h)
-            result.append(c)
-    return result
+def _rerank_by_topic(chunks: list[dict], topic: str | None) -> list[dict]:
+    if not topic:
+        return chunks
+    topic_lower = topic.lower()
+    match = []
+    other = []
+    for c in chunks:
+        src = c["metadata"].get("source", "").lower()
+        if topic_lower in src:
+            match.append(c)
+        else:
+            other.append(c)
+    return match + other
 
 
 async def ask(
@@ -138,18 +138,14 @@ async def ask(
             return
 
     # Etape 1 : RETRIEVAL - recherche les chunks pertinents dans ChromaDB
-    TOP_K = 10
+    TOP_K = 15
 
-    # Si la question mentionne un document specifique, on cible sa source
-    topic_filter = _detect_topic_filter(question)
-    if topic_filter:
-        filtered = search_similar(question, k=TOP_K, where=topic_filter)
-        general = search_similar(question, k=TOP_K)
-        context_chunks = _merge_dedup(filtered, general)
-    else:
-        context_chunks = search_similar(question, k=TOP_K)
-
+    # Recherche large, puis reclassement par topic si detecte
+    context_chunks = search_similar(question, k=TOP_K)
     context_chunks = _dedup_chunks(context_chunks)
+    topic = _detect_topic(question)
+    if topic:
+        context_chunks = _rerank_by_topic(context_chunks, topic)
 
     # Si aucun document n'est indexe, on informe l'utilisateur
     if not context_chunks:
