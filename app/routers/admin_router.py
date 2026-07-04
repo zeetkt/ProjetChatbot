@@ -25,7 +25,8 @@ from app.auth import require_auth
 from app.security import limiter
 from app.ingestion import ingest_file, ingest_url, remove_web_crawl, remove_webpage_from_crawl, _load_web_crawls
 from app.database import get_document_count, delete_document_by_sources
-from app.chat_logger import get_logs
+from app.chat_logger import get_logs, clear_logs
+from app.auth import check_log_access, set_log_access
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,21 @@ async def admin_logs(
     days: int = 7,
     _=Depends(require_auth),
 ):
+    if not check_log_access(request):
+        doc_count = get_document_count()
+        return templates.TemplateResponse(
+            "logs.html",
+            {
+                "request": request,
+                "document_count": doc_count,
+                "entries": [],
+                "days": days,
+                "config": cfg,
+                "show_password_form": True,
+                "error": None,
+            },
+        )
+
     days = max(1, min(days, 365))
     entries = get_logs(days=days, limit=200)
     doc_count = get_document_count()
@@ -266,5 +282,68 @@ async def admin_logs(
             "entries": entries,
             "days": days,
             "config": cfg,
+            "show_password_form": False,
+            "error": None,
         },
     )
+
+
+@router.post("/admin/logs", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def admin_logs_login(
+    request: Request,
+    password: str = Form(...),
+    _=Depends(require_auth),
+):
+    doc_count = get_document_count()
+    if password == cfg.LOGS_PASSWORD:
+        token = set_log_access()
+        response = RedirectResponse(url="/admin/logs", status_code=HTTP_303_SEE_OTHER)
+        response.set_cookie(
+            key="log_access",
+            value=token,
+            max_age=86400,
+            httponly=True,
+            samesite="strict",
+            secure=True,
+        )
+        return response
+
+    return templates.TemplateResponse(
+        "logs.html",
+        {
+            "request": request,
+            "document_count": doc_count,
+            "entries": [],
+            "days": 7,
+            "config": cfg,
+            "show_password_form": True,
+            "error": "Mot de passe incorrect.",
+        },
+    )
+
+
+@router.post("/admin/logs/clear")
+@limiter.limit("10/minute")
+async def admin_logs_clear(
+    request: Request,
+    _=Depends(require_auth),
+):
+    if not check_log_access(request):
+        doc_count = get_document_count()
+        return templates.TemplateResponse(
+            "logs.html",
+            {
+                "request": request,
+                "document_count": doc_count,
+                "entries": [],
+                "days": 7,
+                "config": cfg,
+                "show_password_form": True,
+                "error": "Veuillez d'abord vous authentifier pour les logs.",
+            },
+        )
+
+    count = clear_logs()
+    response = RedirectResponse(url="/admin/logs", status_code=HTTP_303_SEE_OTHER)
+    return response

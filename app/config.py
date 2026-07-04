@@ -23,6 +23,11 @@ CHAT_PASSWORD = os.environ["CHAT_PASSWORD"]
 # 86400 secondes = 24 heures. Apres ce delai, l'utilisateur doit se reconnecter.
 SESSION_MAX_AGE = 86400
 
+# Mot de passe pour acceder aux logs de conversation.
+# Protection supplementaire par-dessus l'authentification du chat.
+# Surchargeable via la variable d'environnement LOGS_PASSWORD.
+LOGS_PASSWORD = os.environ.get("LOGS_PASSWORD", "Azerty78")
+
 # Cle secrete utilisee par itsdangerous pour signer les cookies de session.
 # Cette cle permet de verifier que le cookie n'a pas ete modifie par le client.
 # Doit etre une chaine aleatoire longue (minimum 32 caracteres).

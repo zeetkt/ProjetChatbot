@@ -66,6 +66,26 @@ def log_refused(question: str, reason: str) -> None:
     _write_entry(question, f"[REFUSE] {reason}")
 
 
+def clear_logs() -> int:
+    """
+    Supprime tous les fichiers de logs.
+
+    Returns:
+        int: Nombre de fichiers supprimes.
+    """
+    if not os.path.isdir(cfg.LOGS_PATH):
+        return 0
+    count = 0
+    for fname in os.listdir(cfg.LOGS_PATH):
+        if fname.startswith("chat_") and fname.endswith(".jsonl"):
+            try:
+                os.remove(os.path.join(cfg.LOGS_PATH, fname))
+                count += 1
+            except OSError:
+                continue
+    return count
+
+
 def get_logs(days: int = 7, limit: int = 100, offset: int = 0) -> list[dict]:
     """
     Recupere les conversations recentes depuis les fichiers de logs.

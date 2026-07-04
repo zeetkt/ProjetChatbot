@@ -34,9 +34,11 @@ import app.config as cfg
 # - salt : "sel" ajoute pour eviter les attaques par reutilisation de signature
 #          entre differentes fonctionnalites qui utiliseraient la meme cle
 serializer = URLSafeTimedSerializer(cfg.SECRET_KEY, salt="auth-session")
+log_serializer = URLSafeTimedSerializer(cfg.SECRET_KEY, salt="log-access")
 
 # Nom du cookie HTTP qui contient le token de session
 SESSION_COOKIE = "session_token"
+LOG_ACCESS_COOKIE = "log_access"
 
 
 def create_session_token() -> tuple[str, str]:
@@ -169,3 +171,19 @@ async def optional_auth(request: Request) -> bool:
         bool: True si l'utilisateur est authentifie, False sinon.
     """
     return verify_session(request)
+
+
+def check_log_access(request: Request) -> bool:
+    """Verifie le cookie d'acces aux logs."""
+    token = request.cookies.get(LOG_ACCESS_COOKIE)
+    if not token:
+        return False
+    try:
+        return log_serializer.loads(token, max_age=86400) is not None
+    except Exception:
+        return False
+
+
+def set_log_access() -> str:
+    """Cree un token d'acces aux logs (valide 24h)."""
+    return log_serializer.dumps({"log_access": True})

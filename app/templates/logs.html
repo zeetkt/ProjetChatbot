@@ -1,17 +1,3 @@
-<!--
-  Page des logs de conversation.
-
-  Affiche la liste des echanges (question + reponse) classes par date
-  decroissante. Chaque entree peut etre deployee pour voir la reponse
-  complete. L'administrateur peut choisir le nombre de jours a remonter.
-
-  Variables Jinja2 attendues :
-    - request : objet Request
-    - document_count : nombre de passages indexes
-    - entries : liste des conversations (timestamp, question, answer)
-    - days : nombre de jours de logs affiches
-    - config : module de config
--->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -58,6 +44,34 @@
     }
     .toggle-btn:hover { text-decoration: underline; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+    .password-form {
+      max-width: 400px;
+      margin: 2rem auto;
+      padding: 2rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      text-align: center;
+    }
+    .password-form input[type="password"] {
+      width: 100%;
+      padding: 0.6rem;
+      margin: 1rem 0;
+      box-sizing: border-box;
+    }
+    .error-msg {
+      color: #e74c3c;
+      margin-bottom: 0.5rem;
+    }
+    .danger-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.3rem;
+      cursor: pointer;
+    }
+    .danger-btn:hover { background: #c0392b; }
+    .btn-row { display: flex; gap: 0.5rem; align-items: center; }
   </style>
 </head>
 <body>
@@ -72,32 +86,51 @@
   </nav>
 
   <div class="admin-layout">
-    <section class="admin-card">
-      <div class="logs-controls">
-        <h2>📋 Conversations ({{ entries|length }})</h2>
-        <form method="get" action="/admin/logs">
-          <label for="days">Derniers</label>
-          <input type="number" id="days" name="days" value="{{ days }}" min="1" max="365">
-          <label for="days">jours</label>
-          <button type="submit" class="btn-primary" style="padding:0.3rem 0.8rem;">Filtrer</button>
+    {% if show_password_form %}
+      <section class="admin-card password-form">
+        <h2>🔒 Accès aux logs</h2>
+        <p>Veuillez entrer le mot de passe pour consulter les logs.</p>
+        {% if error %}
+          <div class="error-msg">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/admin/logs">
+          <input type="password" name="password" placeholder="Mot de passe" required autofocus>
+          <button type="submit" class="btn-primary">Accéder</button>
         </form>
-      </div>
-
-      {% if entries %}
-        {% for entry in entries %}
-        <div class="log-entry">
-          <div class="meta">
-            {{ entry.timestamp[:19] | replace("T", " à ") }}
+      </section>
+    {% else %}
+      <section class="admin-card">
+        <div class="logs-controls">
+          <h2>📋 Conversations ({{ entries|length }})</h2>
+          <div class="btn-row">
+            <form method="get" action="/admin/logs">
+              <label for="days">Derniers</label>
+              <input type="number" id="days" name="days" value="{{ days }}" min="1" max="365">
+              <label for="days">jours</label>
+              <button type="submit" class="btn-primary" style="padding:0.3rem 0.8rem;">Filtrer</button>
+            </form>
+            <form method="post" action="/admin/logs/clear" onsubmit="return confirm('Supprimer tous les logs ? Cette action est irreversible.');">
+              <button type="submit" class="danger-btn">Effacer les logs</button>
+            </form>
           </div>
-          <div class="question">Q : {{ entry.question | e }}</div>
-          <div class="answer collapsed" id="answer-{{ loop.index }}">{{ entry.answer | e }}</div>
-          <button class="toggle-btn" onclick="toggleAnswer({{ loop.index }})">Afficher plus</button>
         </div>
-        {% endfor %}
-      {% else %}
-        <p class="empty-state">Aucune conversation enregistree sur cette periode.</p>
-      {% endif %}
-    </section>
+
+        {% if entries %}
+          {% for entry in entries %}
+          <div class="log-entry">
+            <div class="meta">
+              {{ entry.timestamp[:19] | replace("T", " à ") }}
+            </div>
+            <div class="question">Q : {{ entry.question | e }}</div>
+            <div class="answer collapsed" id="answer-{{ loop.index }}">{{ entry.answer | e }}</div>
+            <button class="toggle-btn" onclick="toggleAnswer({{ loop.index }})">Afficher plus</button>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="empty-state">Aucune conversation enregistree sur cette periode.</p>
+        {% endif %}
+      </section>
+    {% endif %}
   </div>
 
   <script>
