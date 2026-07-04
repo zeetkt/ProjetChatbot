@@ -3,8 +3,7 @@ Module d'interaction avec l'API OpenRouter (LLM).
 
 Ce module gere la communication avec OpenRouter, une plateforme qui
 donne acces a de nombreux modeles de langage via une API compatible
-OpenAI. On utilise donc le client Python officiel de la bibliotheque
-"openai", mais configure avec l'URL de base d'OpenRouter.
+OpenAI.
 
 Le point d'entree principal est generate_answer(), qui :
 1. Construit un contexte a partir des chunks de documents recuperes
@@ -14,26 +13,12 @@ Le point d'entree principal est generate_answer(), qui :
 
 Le streaming permet d'afficher la reponse en temps reel dans l'interface
 chat, sans attendre la generation complete.
-
-Mecanisme :
-- On utilise AsyncOpenAI pour les appels asynchrones (non bloquants)
-- Le streaming (stream=True) renvoie les tokens des qu'ils sont generés
-- La temperature est basse (0.3) pour des reponses plus factuelles
 """
 
 import json
-from openai import AsyncOpenAI
+import httpx
 from typing import AsyncGenerator
 import app.config as cfg
-
-# ─── Client OpenRouter ──────────────────────────────────────────────────────────
-# AsyncOpenAI est la version asynchrone du client OpenAI.
-# On configure simplement l'URL de base et la cle API pour pointer vers
-# OpenRouter au lieu d'OpenAI. Toute l'API reste compatible.
-client = AsyncOpenAI(
-    base_url=cfg.OPENROUTER_BASE_URL,
-    api_key=cfg.OPENROUTER_API_KEY,
-)
 
 # ─── Prompt systeme ─────────────────────────────────────────────────────────────
 # Ce prompt definit les domaines autorises et les regles de conduite du LLM.
@@ -76,27 +61,8 @@ Regles :
 async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
     """
     Envoie une conversation a OpenRouter et recupere la reponse en streaming.
-
-    Utilise l'API de completion avec streaming active. Chaque token est
-    retourne des qu'il est genere par le modele, ce qui permet un affichage
-    en temps reel dans l'interface.
-
-    Args:
-        messages: Liste de dictionnaires representant la conversation.
-            Format standard OpenAI :
-            [
-                {"role": "system", "content": "Instructions..."},
-                {"role": "user", "content": "Question avec contexte..."}
-            ]
-
-    Yields:
-        str: Chaque token de texte genere par le LLM, un par un.
-
-    Note technique :
-        Le modele utilise et la temperature sont configures dans config.py.
-        Le streaming utilise Server-Sent Events (SSE) en interne.
     """
-    kwargs = dict(
+    body = dict(
         model=cfg.OPENROUTER_MODEL,
         messages=messages,
         stream=True,
@@ -104,13 +70,32 @@ async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
         max_tokens=4096,
     )
     if "qwen" in cfg.OPENROUTER_MODEL:
-        kwargs["extra_body"] = {"include_reasoning": True}
+        body["include_reasoning"] = True
 
-    stream = await client.chat.completions.create(**kwargs)
-    async for chunk in stream:
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if delta and delta.content:
-            yield delta.content
+    async with httpx.AsyncClient(timeout=120) as client:
+        async with client.stream(
+            "POST",
+            f"{cfg.OPENROUTER_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {cfg.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk["choices"][0].get("delta", {})
+                    if delta.get("content"):
+                        yield delta["content"]
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
 
 
 async def generate_answer(
