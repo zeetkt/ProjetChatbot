@@ -9,7 +9,7 @@
 # Logs :
 #   docker compose logs -f
 #
-# Accès depuis le navigateur : http://IP_DU_VPS:8080
+# Accès depuis le navigateur : https://bastien.casa (via Caddy)
 
 services:
   chatbot:
@@ -26,7 +26,7 @@ services:
     # Mapping des ports : HOTE:CONTENEUR
     # L'hôte écoute sur 8080, redirige vers le port 8000 du conteneur (uvicorn)
     ports:
-      - "8080:8000"
+      - "127.0.0.1:8080:8000"
 
     # Fichier de variables d'environnement (non versionné)
     # Contient : OPENROUTER_API_KEY, CHAT_PASSWORD, SESSION_SECRET
