@@ -98,7 +98,7 @@ async def login_post(
             max_age=cfg.SESSION_MAX_AGE,  # 24h
             httponly=True,                  # Inaccessible depuis JavaScript
             samesite="strict",              # Protege contre les attaques CSRF
-            secure=False,                   # False : pas de HTTPS (TODO: mettre True si HTTPS)
+            secure=True,                    # True : HTTPS via Caddy
         )
         return response
 

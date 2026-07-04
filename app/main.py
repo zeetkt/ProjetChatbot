@@ -41,6 +41,8 @@ app = FastAPI(
         "aux questions des eleves basees sur les cours de l'ecole."
     ),
     version="1.0.0",
+    docs_url=None,
+    openapi_url=None,
 )
 
 # ─── Configuration du rate limiter ────────────────────────────────────────────

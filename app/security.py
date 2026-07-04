@@ -66,6 +66,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # (camera, microphone, geolocalisation) pour reduire la surface d'attaque
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
+        # Strict-Transport-Security: force HTTPS pendant 1 an (inclus subdomaines)
+        # Preload possible si le domaine est soumis aux preload lists HSTS
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
         # Cache-Control: empeche la mise en cache des pages sensibles
         response.headers["Cache-Control"] = "no-store"
 
