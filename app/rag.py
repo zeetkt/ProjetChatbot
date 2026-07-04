@@ -62,14 +62,23 @@ _TOPIC_KEYWORDS: dict[str, str] = {
     "samba": "Samba",
     "référentiel": "REAC",
     "reac": "REAC",
+    "ais": "AIS",
+    "administrateur d'infrastructures sécurisées": "AIS",
 }
 
 
-def _detect_topic(question: str) -> str | None:
+def _detect_topic(question: str, history: list[dict] | None = None) -> str | None:
     q = question.lower()
     for keyword, doc_slug in _TOPIC_KEYWORDS.items():
         if keyword in q:
             return doc_slug
+    # Heritage du topic depuis l historiqe conversationnel
+    if history:
+        for msg in reversed(history):
+            if msg.get("role") == "user":
+                t = _detect_topic(msg.get("content", ""))
+                if t:
+                    return t
     return None
 
 
@@ -168,7 +177,7 @@ async def ask(
     # repetees), donc on cherche tres large (k=50) pour trouver assez de
     # chunks uniques apres deduplication et diversification par source.
     # Si un sujet est detecte (CDA, TSSR...), on lance une seconde requete.
-    topic = _detect_topic(question)
+    topic = _detect_topic(question, history=history)
     context_chunks = search_similar(question, k=50)
     if topic:
         extra = search_similar(topic, k=25)
