@@ -106,11 +106,8 @@ async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
     )
     async for chunk in stream:
         delta = chunk.choices[0].delta if chunk.choices else None
-        if delta:
-            if hasattr(delta, "reasoning") and delta.reasoning:
-                yield delta.reasoning
-            if delta.content:
-                yield delta.content
+        if delta and delta.content:
+            yield delta.content
 
 
 async def generate_answer(
