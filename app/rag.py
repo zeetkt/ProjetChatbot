@@ -73,6 +73,19 @@ def _detect_topic(question: str) -> str | None:
     return None
 
 
+def _merge_dedup(a: list[dict], b: list[dict]) -> list[dict]:
+    seen = set()
+    result = a[:]
+    for c in result:
+        seen.add(hash(c["content"]))
+    for c in b:
+        h = hash(c["content"])
+        if h not in seen:
+            seen.add(h)
+            result.append(c)
+    return result
+
+
 def _diversify_chunks(
     chunks: list[dict],
     topic: str | None = None,
@@ -153,9 +166,13 @@ async def ask(
     # Etape 1 : RETRIEVAL - recherche les chunks pertinents dans ChromaDB
     # On cherche large (k=25) pour couvrir plusieurs sources, puis on
     # diversifie : max 4 chunks par document source. Si un sujet est
-    # detecte (CDA, TSSR...), on sur-represente le document cible.
-    context_chunks = search_similar(question, k=25)
+    # detecte (CDA, TSSR...), on lance aussi une seconde requete avec
+    # le nom du sujet pour recuperer plus de chunks du document cible.
     topic = _detect_topic(question)
+    context_chunks = search_similar(question, k=25)
+    if topic:
+        extra = search_similar(topic, k=15)
+        context_chunks = _merge_dedup(context_chunks, extra)
     context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=4)
 
     # Si aucun document n'est indexe, on informe l'utilisateur
