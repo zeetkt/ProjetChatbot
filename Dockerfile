@@ -8,7 +8,8 @@ FROM python:3.12-slim
 # TORCH_INDEX_URL           : télécharge PyTorch version CPU uniquement (pas de GPU)
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+    TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu \
+    PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
 
 # ─── Répertoire de travail ────────────────────────────────────────────────────
 WORKDIR /app
@@ -32,7 +33,7 @@ RUN pip install --no-cache-dir torch --index-url $TORCH_INDEX_URL \
         libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
         libxshmfence1 libpango-1.0-0 libcairo2 \
     && rm -rf /var/lib/apt/lists/* \
-    && PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright python3 -m playwright install chromium 2>&1 | tail -5
+    && PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright python3 -m playwright install chromium
 
 # ─── Copie du code source ─────────────────────────────────────────────────────
 # Le .dockerignore doit exclure chroma_db/, documents/, .env, etc.
