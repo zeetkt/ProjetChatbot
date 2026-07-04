@@ -25,10 +25,11 @@ enregistree dans les logs via app.chat_logger.
 import json
 from typing import AsyncGenerator
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.status import HTTP_303_SEE_OTHER
 from pydantic import BaseModel
-from app.auth import require_auth, get_session_id
+from app.auth import require_auth, get_session_id, verify_session
 from app.security import limiter, validate_message_content
 from app.chat_logger import log_conversation, log_refused
 from app.database import get_document_count
@@ -52,25 +53,14 @@ class ChatRequest(BaseModel):
 
 
 @router.get("/", response_class=HTMLResponse)
-async def chat_page(request: Request, _=Depends(require_auth)):
+async def chat_page(request: Request):
     """
     Affiche la page principale du chat.
 
-    Cette route est protegee par l'authentification (require_auth).
-    Si l'utilisateur n'est pas connecte, il recoit une erreur 401.
-
-    La page affiche :
-    - La liste des messages (initialement juste le message de bienvenue)
-    - Le champ de saisie pour poser une question
-    - Le nombre de documents indexes (dans la barre de navigation)
-
-    Args:
-        request: La requete HTTP entrante.
-        _: Dependance d'authentification (le resultat n'est pas utilise).
-
-    Returns:
-        HTMLResponse: La page HTML de l'interface de chat.
+    Si l'utilisateur n'est pas connecte, redirige vers /login.
     """
+    if not verify_session(request):
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
     doc_count = get_document_count()
     return templates.TemplateResponse(
         "chat.html", {"request": request, "document_count": doc_count}
