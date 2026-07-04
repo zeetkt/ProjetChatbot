@@ -69,6 +69,9 @@
     </div>
   </div>
 
+  <!-- ─── Librairie Markdown (rendu des messages) ────────────────────────── -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
   <!-- ─── JavaScript : gestion du chat avec streaming ──────────────────── -->
   <script>
     // ─── References aux elements du DOM ────────────────────────────────
@@ -179,9 +182,7 @@
                 const parsed = JSON.parse(data);
                 if (parsed.token) {
                   fullAnswer += parsed.token;
-                  // Mise a jour du message du bot avec la reponse complete
-                  // (a chaque nouveau token, on re-affiche tout le texte)
-                  botMsg.innerHTML = escapeHtml(fullAnswer).replace(/\n/g, '<br>');
+                  botMsg.innerHTML = marked.parse(fullAnswer);
                   messages.scrollTop = messages.scrollHeight;
                 }
               } catch (err) {
