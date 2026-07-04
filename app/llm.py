@@ -16,9 +16,12 @@ chat, sans attendre la generation complete.
 """
 
 import json
+import logging
 import httpx
 from typing import AsyncGenerator
 import app.config as cfg
+
+logger = logging.getLogger(__name__)
 
 # ─── Prompt systeme ─────────────────────────────────────────────────────────────
 # Ce prompt definit les domaines autorises et les regles de conduite du LLM.
@@ -91,10 +94,23 @@ async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
                     break
                 try:
                     chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+
+                # OpenRouter peut renvoyer une erreur dans le stream
+                if "error" in chunk and chunk["error"]:
+                    err = chunk["error"]
+                    logger.error("OpenRouter stream error: code=%s message=%s",
+                                 err.get("code"), err.get("message"))
+                    yield ("[Erreur lors de la génération de la réponse. "
+                           "Réessaie ou contacte l'administrateur.]")
+                    return
+
+                try:
                     delta = chunk["choices"][0].get("delta", {})
                     if delta.get("content"):
                         yield delta["content"]
-                except (json.JSONDecodeError, KeyError, IndexError):
+                except (KeyError, IndexError):
                     continue
 
 
