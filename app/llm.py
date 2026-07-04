@@ -96,13 +96,17 @@ async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
         Le modele utilise et la temperature sont configures dans config.py.
         Le streaming utilise Server-Sent Events (SSE) en interne.
     """
+    extra_body = {}
+    if "qwen" in cfg.OPENROUTER_MODEL:
+        extra_body["include_reasoning"] = True
+
     stream = await client.chat.completions.create(
         model=cfg.OPENROUTER_MODEL,
         messages=messages,
         stream=True,                    # Active le streaming des tokens
         temperature=0.3,                # Basse temperature = plus factuel
         max_tokens=4096,                # Longueur maximale de la reponse
-        extra_body={"include_reasoning": True},
+        extra_body=extra_body or None,
     )
     async for chunk in stream:
         delta = chunk.choices[0].delta if chunk.choices else None
