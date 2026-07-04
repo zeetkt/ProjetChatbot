@@ -152,7 +152,7 @@ async def import_url(
     max_pages = max(1, min(max_pages, 200))
 
     try:
-        result = ingest_url(url, max_pages=max_pages, max_depth=depth)
+        result = await ingest_url(url, max_pages=max_pages, max_depth=depth)
         n = result.get("pages", 0)
         if n == 0:
             msg = f"Aucune page n'a pu etre importee depuis {url}."

@@ -415,14 +415,14 @@ def _is_spa(html: str) -> bool:
     return len(text) < 500
 
 
-def _get_page_html(url: str) -> str | None:
+async def _get_page_html(url: str) -> str | None:
     """Recupere le HTML d'une page, avec fallback headless si SPA."""
     html = _fetch_page(url)
     if html and _is_spa(html):
         logger.info("SPA detectee, rendu headless: %s", url)
         try:
             from app.browser import render_page
-            rendered = render_page(url)
+            rendered = await render_page(url)
             if rendered:
                 return rendered
         except Exception as e:
@@ -430,7 +430,7 @@ def _get_page_html(url: str) -> str | None:
     return html
 
 
-def _crawl_website(
+async def _crawl_website(
     start_url: str,
     max_pages: int = 50,
     max_depth: int = 2,
@@ -457,7 +457,7 @@ def _crawl_website(
         visited.add(norm_url)
 
         logger.info("Crawl [%d/%d] profondeur=%d: %s", len(pages) + 1, max_pages, depth, url)
-        html = _get_page_html(url)
+        html = await _get_page_html(url)
         if html is None:
             continue
 
@@ -561,7 +561,7 @@ def remove_webpage_from_crawl(filename: str) -> str | None:
 
 # ─── Ingestion d'une page web ─────────────────────────────────────────────────
 
-def ingest_url(
+async def ingest_url(
     url: str,
     max_pages: int | None = None,
     max_depth: int | None = None,
@@ -587,7 +587,7 @@ def ingest_url(
     max_depth = max_depth or cfg.WEB_CRAWL_MAX_DEPTH
 
     crawl_id = secrets.token_hex(4)
-    pages = _crawl_website(url, max_pages=max_pages, max_depth=max_depth)
+    pages = await _crawl_website(url, max_pages=max_pages, max_depth=max_depth)
     if not pages:
         return {"crawl_id": crawl_id, "pages": 0, "results": {}}
 

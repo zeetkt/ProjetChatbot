@@ -14,15 +14,15 @@ Chatbot RAG (Retrieval Augmented Generation) pour une école. Les élèves posen
 ## Démarrage rapide
 
 ```bash
-# 1. Cloner
-git clone https://github.com/zeetkt/ProjetChatbot.git
+# 1. Cloner le dépôt
+git clone <url-du-depot>
 cd ProjetChatbot
 
 # 2. Configurer
 cp .env.example .env
 # Editer .env : CHAT_PASSWORD, OPENROUTER_API_KEY, SECRET_KEY
 
-# 3. Lancer (dev local)
+# 3. Lancer
 docker compose up -d --build
 ```
 
@@ -30,34 +30,35 @@ docker compose up -d --build
 
 | URL | Description |
 |-----|-------------|
-| `http://localhost:8080/login` | Connexion |
-| `http://localhost:8080/` | Chat (redirige vers /login si non connecté) |
-| `http://localhost:8080/admin` | Admin (upload/suppression docs) |
-| `http://localhost:8080/admin/logs` | Historique des conversations |
-
-En production derrière Caddy, remplacer `http://localhost:8080` par le domaine HTTPS.
+| `/login` | Connexion |
+| `/` | Chat (redirige vers /login si non connecté) |
+| `/admin` | Admin (upload/suppression docs, import sites web) |
+| `/admin/logs` | Historique des conversations |
 
 ## Pipeline RAG
 
 ```
 Question → OFFENSIVE_PATTERNS (refus si match)
-  → search_similar(k=50) [recherche large]
+  → search_similar(k=50)
   → Si topic détecté : search avec filtre source (k=20) + merge dedup
-  → Rerank (cross-encoder, re-score tout)
+  → Rerank (cross-encoder)
   → Diversify (max_per_source, max_total=12)
   → Generate_answer (LLM avec contexte)
 ```
 
 ## Fonctionnalités
 
-- **RAG** : recherche vectorielle chromadb + reranking cross-encoder + réponse LLM contextuelle
-- **Détection de sujet automatique** : extrait les slugs depuis les noms de fichiers pour filtrer les sources
-- **Reranking** : cross-encoder multilingue re-classe les chunks par pertinence après la recherche vectorielle
+- **RAG** : recherche vectorielle chromadb + reranking cross-encoder + réponse LLM
+- **Détection de sujet** : extrait les slugs depuis les noms de fichiers pour filtrer
+- **Reranking** : cross-encoder multilingue re-classe les chunks par pertinence
 - **Streaming** : tokens affichés en temps réel (SSE) avec détection d'erreur OpenRouter
-- **Mémoire de session** : le LLM se souvient des échanges précédents (avec héritage du sujet)
-- **Rendu Markdown** : les réponses du LLM sont affichées en Markdown (titres, listes, code, citations)
-- **Import** : PDF, DOCX, TXT, MD, HTML (chunking avec chevauchement)
-- **Sécurité** : rate limiting (slowapi 60/min global), CSP headers, HSTS, pré-filtre OFFENSIVE_PATTERNS, anti-injection (sandwich), anti-path-traversal, docs API désactivées en prod
+- **Mémoire de session** : le LLM se souvient des échanges précédents
+- **Rendu Markdown** : marked.js pour l'affichage des réponses
+- **Import multi-fichiers** : upload de plusieurs fichiers à la fois (50 max, 50 Mo chacun)
+- **Import site web** : crawl BFS avec profondeur configurable, détection SPA headless (Playwright Chromium)
+- **Arborescence crawls** : pages organisées par site, suppression individuelle ou par crawl
+- **Formats supportés** : PDF, DOCX, TXT, MD, HTML
+- **Sécurité** : rate limiting (slowapi), CSP headers, HSTS, pré-filtre OFFENSIVE_PATTERNS, anti-injection (sandwich), anti-path-traversal, anti-SSRF, docs API désactivées en prod
 - **Auth** : cookie signé (itsdangerous), 24h, HttpOnly + SameSite=Strict + Secure
 
 ## Configuration
