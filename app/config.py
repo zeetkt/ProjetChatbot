@@ -49,7 +49,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Les documents sont decoupes en passages de cette taille avant d'etre indexes.
 # 1000 caracteres ≈ 200-250 tokens, ce qui permet d'avoir des passages
 # suffisamment longs pour etre significatifs mais assez courts pour etre precis.
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "1000"))
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "2000"))
 
 # Nombre de caracteres de chevauchement entre deux chunks consecutifs.
 # Le chevauchement permet de ne pas couper une phrase ou une idee importante

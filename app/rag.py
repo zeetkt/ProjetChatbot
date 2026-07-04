@@ -173,7 +173,8 @@ async def ask(
     if topic:
         extra = search_similar(topic, k=25)
         context_chunks = _merge_dedup(context_chunks, extra)
-    context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=4)
+    max_per = 6 if topic else 4
+    context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=max_per, max_total=15)
 
     # Si aucun document n'est indexe, on informe l'utilisateur
     if not context_chunks:
