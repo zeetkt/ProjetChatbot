@@ -36,10 +36,10 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
 # Identifiant du modele utilise sur OpenRouter.
-# google/gemma-4-12b-it : modele open-source de Google, 12 milliards de parametres,
+# google/gemma-4-31b-it : modele open-source de Google, 31 milliards de parametres,
 # optimise pour les instructions, support multilingue (francais inclus).
 # 256k tokens de contexte, licence Apache 2.0.
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-12b-it")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it")
 
 # URL de base de l'API OpenRouter.
 # L'API OpenRouter est compatible avec le format OpenAI, donc on utilise
