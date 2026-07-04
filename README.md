@@ -8,8 +8,8 @@ Chatbot RAG (Retrieval Augmented Generation) pour une école. Les élèves posen
 - **Vector DB** : ChromaDB 0.5+, sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2)
 - **Reranker** : Cross-encoder (mmarco-mMiniLMv2-L12-H384-v1)
 - **LLM** : OpenRouter (Mistral Small 3.2), streaming SSE
-- **Frontend** : Jinja2 templates, CSS vanilla, JS natif (marked.js pour Markdown)
-- **Déploiement** : Docker Compose, Caddy (reverse proxy + HTTPS auto)
+- **Frontend** : Jinja2 templates, CSS vanilla, JS natif (marked.js local pour Markdown)
+- **Déploiement** : Docker Compose, Caddy (reverse proxy + HTTPS Let's Encrypt)
 
 ## Démarrage rapide
 
@@ -26,14 +26,14 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-## Utilisation (dev local)
+## Utilisation
 
 | URL | Description |
 |-----|-------------|
-| `/login` | Connexion |
-| `/` | Chat (redirige vers /login si non connecté) |
-| `/admin` | Admin (upload/suppression docs, import sites web) |
-| `/admin/logs` | Historique des conversations |
+| `https://bastien.casa/login` | Connexion |
+| `https://bastien.casa/` | Chat (redirige vers /login si non connecté) |
+| `https://bastien.casa/admin` | Admin (upload/suppression docs, import sites web) |
+| `https://bastien.casa/admin/logs` | Historique des conversations (protégé par mot de passe) |
 
 ## Pipeline RAG
 
@@ -53,12 +53,14 @@ Question → OFFENSIVE_PATTERNS (refus si match)
 - **Reranking** : cross-encoder multilingue re-classe les chunks par pertinence
 - **Streaming** : tokens affichés en temps réel (SSE) avec détection d'erreur OpenRouter
 - **Mémoire de session** : le LLM se souvient des échanges précédents
-- **Rendu Markdown** : marked.js pour l'affichage des réponses
+- **Rendu Markdown** : marked.js (servi localement, pas de CDN externe)
 - **Import multi-fichiers** : upload de plusieurs fichiers à la fois (50 max, 50 Mo chacun)
 - **Import site web** : crawl BFS avec profondeur configurable, détection SPA headless (Playwright Chromium)
 - **Arborescence crawls** : pages organisées par site, suppression individuelle ou par crawl
 - **Formats supportés** : PDF, DOCX, TXT, MD, HTML
-- **Sécurité** : rate limiting (slowapi), CSP headers, HSTS, pré-filtre OFFENSIVE_PATTERNS, anti-injection (sandwich), anti-path-traversal, anti-SSRF, docs API désactivées en prod
+- **Logs protégés** : mot de passe dédié pour accéder à l'historique des conversations
+- **Effacement logs** : bouton "Effacer les logs" avec confirmation
+- **Sécurité** : rate limiting (slowapi), CSP headers, HSTS, pré-filtre OFFENSIVE_PATTERNS, anti-injection (sandwich), anti-path-traversal, anti-SSRF, docs API désactivées en prod, cookie Secure
 - **Auth** : cookie signé (itsdangerous), 24h, HttpOnly + SameSite=Strict + Secure
 
 ## Configuration
@@ -67,10 +69,11 @@ Variables clés dans `.env` :
 
 | Variable | Description |
 |----------|-------------|
-| `CHAT_PASSWORD` | Mot de passe unique d'accès |
+| `CHAT_PASSWORD` | Mot de passe unique d'accès au chat |
 | `OPENROUTER_API_KEY` | Clé API OpenRouter |
 | `SECRET_KEY` | Clé pour signer les cookies |
 | `OPENROUTER_MODEL` | Modèle LLM (défaut: mistralai/mistral-small-3.2-24b-instruct) |
+| `LOGS_PASSWORD` | Mot de passe pour les logs (défaut: Azerty78) |
 
 ## Licence
 
