@@ -100,6 +100,29 @@ def get_session_data(request: Request) -> Optional[dict]:
         return None
 
 
+async def require_auth(request: Request):
+    """
+    Dépendance FastAPI qui exige une authentification valide.
+
+    A utiliser comme dependance sur les routes protegees :
+        @router.get("/admin")
+        async def admin_page(request: Request, _=Depends(require_auth)):
+            ...
+
+    Si l'utilisateur n'est pas authentifie, une exception HTTP 401 est levee,
+    ce qui entraine une erreur 401 pour les appels API, ou peut etre attrape
+    pour rediriger vers la page de login.
+
+    Args:
+        request: La requete HTTP entrante.
+
+    Raises:
+        HTTPException 401: Si l'utilisateur n'est pas authentifie.
+    """
+    if not verify_session(request):
+        raise HTTPException(status_code=401, detail="Non authentifie.")
+
+
 async def get_session_id(request: Request, _=Depends(require_auth)) -> str:
     """
     Dépendance FastAPI qui retourne l'identifiant de session unique.
@@ -129,29 +152,6 @@ async def get_session_id(request: Request, _=Depends(require_auth)) -> str:
     if not session_id:
         session_id = request.cookies.get(SESSION_COOKIE, "")
     return session_id
-
-
-async def require_auth(request: Request):
-    """
-    Dépendance FastAPI qui exige une authentification valide.
-
-    A utiliser comme dependance sur les routes protegees :
-        @router.get("/admin")
-        async def admin_page(request: Request, _=Depends(require_auth)):
-            ...
-
-    Si l'utilisateur n'est pas authentifie, une exception HTTP 401 est levee,
-    ce qui entraine une erreur 401 pour les appels API, ou peut etre attrape
-    pour rediriger vers la page de login.
-
-    Args:
-        request: La requete HTTP entrante.
-
-    Raises:
-        HTTPException 401: Si l'utilisateur n'est pas authentifie.
-    """
-    if not verify_session(request):
-        raise HTTPException(status_code=401, detail="Non authentifie.")
 
 
 async def optional_auth(request: Request) -> bool:
