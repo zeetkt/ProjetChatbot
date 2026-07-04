@@ -1,0 +1,36 @@
+# ─── Évite de copier les gros répertoires persistants dans l'image ───────────
+chroma_db/
+documents/
+chat_logs/
+
+# ─── Évite de copier les fichiers sensibles ───────────────────────────────────
+.env
+.env.example
+
+# ─── Évite de copier les caches et artefacts locaux ──────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# ─── Évite de copier .git (histoire, inutile dans l'image) ───────────────────
+.git/
+.gitignore
+
+# ─── Fichiers de build (inutiles dans l'image finale) ────────────────────────
+docker-compose.yml
+Dockerfile
+
+# ─── Évite de copier les notes et fichiers de l'IDE ──────────────────────────
+*.md
+*.mdx
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+AGENTS.md
