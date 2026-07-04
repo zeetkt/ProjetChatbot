@@ -20,7 +20,10 @@ Ordre des routeurs important :
 """
 
 import os
+import logging
 from fastapi import FastAPI, Request
+
+logging.basicConfig(level=logging.INFO)
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
