@@ -23,6 +23,7 @@ Fonctionnalites :
 """
 
 import os
+import logging
 import chromadb
 import chromadb.config
 from chromadb import Collection
@@ -30,6 +31,8 @@ from chromadb.errors import InvalidCollectionException
 from functools import lru_cache
 import app.config as cfg
 from app.embeddings import embedding_function
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -76,10 +79,50 @@ def get_collection() -> Collection:
         Collection: L'objet collection ChromaDB.
     """
     client = get_client()
-    return client.get_or_create_collection(
+    collection = client.get_or_create_collection(
         name=cfg.COLLECTION_NAME,
         embedding_function=embedding_function,
     )
+    _deduplicate_collection_once(collection)
+    return collection
+
+
+# ─── Nettoyage des doubluns au demarrage ────────────────────────────────────────
+# Les indexations successives peuvent creer des chunks quasi-identiques
+# (meme debut de texte, fin legerement differente a cause du chevauchement).
+# On nettoie au premier acces a la collection pour eviter de polluer le
+# contexte envoye au LLM avec des redites.
+_dedup_done = False
+
+
+def _deduplicate_collection_once(collection: Collection) -> None:
+    """Supprime les chunks dont les 150 premiers caracteres sont identiques."""
+    global _dedup_done
+    if _dedup_done:
+        return
+    _dedup_done = True
+
+    try:
+        data = collection.get()
+        if not data["ids"]:
+            return
+
+        seen: dict[str, str] = {}
+        to_delete = []
+        for i, doc_id in enumerate(data["ids"]):
+            content = (data["documents"][i] or "")[:150] if data["documents"] else ""
+            if content in seen:
+                to_delete.append(doc_id)
+            else:
+                seen[content] = doc_id
+
+        if to_delete:
+            logger.info("Suppression de %s doublons dans ChromaDB", len(to_delete))
+            collection.delete(ids=to_delete)
+            logger.info("Collection nettoyee : %s documents restants",
+                        collection.count())
+    except Exception as e:
+        logger.warning("Erreur lors du nettoyage des doublons: %s", e, exc_info=True)
 
 
 def add_document_chunks(chunks: list[str], metadata_list: list[dict]) -> list[str]:

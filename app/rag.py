@@ -33,6 +33,7 @@ from openai import AuthenticationError, APIConnectionError, RateLimitError
 import app.config as cfg
 from app.database import search_similar
 from app.llm import generate_answer
+from app.reranker import rerank
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,13 @@ _GENERIC_WORDS = frozenset({
     "v5", "new", "old", "draft", "final", "revision", "reac",
 })
 
+# Mots-cles supplementaires pour les acronymes ou sujets qui ne figurent pas
+# dans les noms de fichiers. La valeur est le slug du sujet correspondant.
+_TOPIC_OVERRIDES = {
+    "ais": "EDUCENTRE",
+    "administrateur": "EDUCENTRE",
+}
+
 
 def _get_file_slugs() -> dict[str, str]:
     """Extrait des mots-cles de sujet depuis les noms de fichiers documents."""
@@ -80,19 +88,43 @@ def _get_file_slugs() -> dict[str, str]:
             if (word.isalpha() and len(lo) >= 3
                     and lo not in _GENERIC_WORDS
                     and lo not in slugs):
-                slugs[lo] = word  # garde la casse originale
+                slugs[lo] = word
     return slugs
+
+
+def _get_file_sources() -> dict[str, list[str]]:
+    """slug → [fichiers_source] pour le filtrage par source dans ChromaDB."""
+    sources: dict[str, list[str]] = {}
+    docs_path = cfg.DOCUMENTS_PATH
+    if not os.path.isdir(docs_path):
+        return sources
+    for fname in os.listdir(docs_path):
+        if not os.path.isfile(os.path.join(docs_path, fname)):
+            continue
+        name = Path(fname).stem
+        parts = re.split(r'[_\-.\s]+', name)
+        for part in parts:
+            word = part.strip()
+            lo = word.lower()
+            if word.isalpha() and len(lo) >= 3 and lo not in _GENERIC_WORDS:
+                sources.setdefault(lo, []).append(fname)
+    return sources
 
 
 def _detect_topic(question: str, history: list[dict] | None = None) -> str | None:
     q = question.lower()
 
-    # 1. Mots-cles extraits automatiquement des noms de fichiers
+    # 1. Mots-cles extraits des noms de fichiers
     for keyword, slug in _get_file_slugs().items():
         if keyword in q:
             return slug
 
-    # 2. Heritage depuis l'historique conversationnel
+    # 2. Mots-cles de secours (acronymes absents des noms de fichiers)
+    for keyword, slug in _TOPIC_OVERRIDES.items():
+        if keyword in q:
+            return slug
+
+    # 3. Heritage depuis l'historique conversationnel
     if history:
         for msg in reversed(history):
             if msg.get("role") == "user":
@@ -102,15 +134,19 @@ def _detect_topic(question: str, history: list[dict] | None = None) -> str | Non
     return None
 
 
+def _prefix(content: str, length: int = 150) -> str:
+    return content[:length]
+
+
 def _merge_dedup(a: list[dict], b: list[dict]) -> list[dict]:
     seen = set()
     result = a[:]
     for c in result:
-        seen.add(hash(c["content"]))
+        seen.add(_prefix(c["content"]))
     for c in b:
-        h = hash(c["content"])
-        if h not in seen:
-            seen.add(h)
+        p = _prefix(c["content"])
+        if p not in seen:
+            seen.add(p)
             result.append(c)
     return result
 
@@ -133,7 +169,7 @@ def _diversify_chunks(
             others.append(c)
 
     # 2. Prendre max max_per_source de chaque source dans le meme ordre
-    def sample(source_list, label):
+    def sample(source_list):
         seen = set()
         result = []
         per_source = {}
@@ -141,16 +177,15 @@ def _diversify_chunks(
             src = c["metadata"].get("source", "")
             if src not in per_source:
                 per_source[src] = []
-            # Dedup par contenu
-            h = hash(c["content"])
-            if h not in seen:
-                seen.add(h)
+            p = _prefix(c["content"])
+            if p not in seen:
+                seen.add(p)
                 per_source[src].append(c)
         for src_list in per_source.values():
             result.extend(src_list[:max_per_source])
         return result
 
-    result = sample(target, "target") + sample(others, "others")
+    result = sample(target) + sample(others)
     return result[:max_total]
 
 
@@ -192,18 +227,33 @@ async def ask(
             yield "Je ne peux pas repondre a cette question."
             return
 
-    # Etape 1 : RETRIEVAL - recherche les chunks pertinents dans ChromaDB
-    # Les documents REAC contiennent beaucoup de texte boiteux (definitions
-    # repetees), donc on cherche tres large (k=50) pour trouver assez de
-    # chunks uniques apres deduplication et diversification par source.
-    # Si un sujet est detecte (CDA, TSSR...), on lance une seconde requete.
+    # Etape 1 : RETRIEVAL
+    # On cherche large (k=50) pour avoir assez de materiel apres dedup.
+    # Si un sujet est detecte, on lance aussi une requete filtree par source
+    # pour garantir que le document pertinent est bien represente.
     topic = _detect_topic(question, history=history)
     context_chunks = search_similar(question, k=50)
     if topic:
-        extra = search_similar(topic, k=25)
-        context_chunks = _merge_dedup(context_chunks, extra)
+        sources_map = _get_file_sources()
+        topic_lower = topic.lower()
+        if topic_lower in sources_map:
+            topic_chunks = search_similar(
+                question, k=20,
+                where={"source": {"$in": sources_map[topic_lower]}},
+            )
+            context_chunks = _merge_dedup(context_chunks, topic_chunks)
+        else:
+            extra = search_similar(topic, k=20)
+            context_chunks = _merge_dedup(context_chunks, extra)
+
+    # Etape 1b : RERANKING
+    # Le cross-encoder re-score les ~50-70 chunks recuperes pour placer
+    # les passages les plus pertinents en tete. Corrige les cas ou le
+    # mauvais document remonte en premiere position.
+    context_chunks = rerank(question, context_chunks)
+
     max_per = 6 if topic else 4
-    context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=max_per, max_total=15)
+    context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=max_per, max_total=12)
 
     # Si aucun document n'est indexe, on informe l'utilisateur
     if not context_chunks:

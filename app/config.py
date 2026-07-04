@@ -106,3 +106,11 @@ COLLECTION_NAME = "school_docs"
 # - all-MiniLM-L6-v2 : anglais uniquement, plus rapide
 # - intfloat/multilingual-e5-small : multilingue, meilleure qualite
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+
+# ─── Reranker (cross-encoder) ───────────────────────────────────────────────────
+# Modele cross-encoder utilise pour reclasser les chunks apres la recherche
+# vectorielle. Il evalue la pertinence de chaque paire (question, chunk) et
+# produit un score de pertinence. Plus lent que la recherche vectorielle mais
+# beaucoup plus precis.
+# mmarco-mMiniLMv2-L12-H384-v1 : multilingue (support francais), ~80 Mo.
+RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")

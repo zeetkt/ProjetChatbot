@@ -24,7 +24,8 @@ COPY requirements.txt .
 # ──note─: sentence-transformers téléchargera son modèle (~470 Mo) au premier
 # démarrage, pas au build. PyTorch (~800 Mo) est installé au build.
 RUN pip install --no-cache-dir torch --index-url $TORCH_INDEX_URL \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && python3 -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')"
 
 # ─── Copie du code source ─────────────────────────────────────────────────────
 # Le .dockerignore doit exclure chroma_db/, documents/, .env, etc.
