@@ -1,0 +1,117 @@
+<!--
+  Page des logs de conversation.
+
+  Affiche la liste des echanges (question + reponse) classes par date
+  decroissante. Chaque entree peut etre deployee pour voir la reponse
+  complete. L'administrateur peut choisir le nombre de jours a remonter.
+
+  Variables Jinja2 attendues :
+    - request : objet Request
+    - document_count : nombre de passages indexes
+    - entries : liste des conversations (timestamp, question, answer)
+    - days : nombre de jours de logs affiches
+    - config : module de config
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logs - Chatbot Ecole</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .logs-controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .logs-controls form { display: flex; gap: 0.5rem; align-items: center; }
+    .logs-controls input[type="number"] { width: 80px; padding: 0.3rem; }
+    .log-entry {
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .log-entry .meta {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    .log-entry .question {
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+    .log-entry .answer {
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+    }
+    .log-entry .answer.collapsed {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .toggle-btn {
+      background: none;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.25rem 0;
+    }
+    .toggle-btn:hover { text-decoration: underline; }
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">📚 Chatbot Ecole — Logs</div>
+    <div class="nav-info">
+      <span class="doc-badge">{{ document_count }} passages indexes</span>
+      <a href="/admin" class="nav-link">Admin</a>
+      <a href="/" class="nav-link">Chat</a>
+      <a href="/logout" class="nav-link">Deconnexion</a>
+    </div>
+  </nav>
+
+  <div class="admin-layout">
+    <section class="admin-card">
+      <div class="logs-controls">
+        <h2>📋 Conversations ({{ entries|length }})</h2>
+        <form method="get" action="/admin/logs">
+          <label for="days">Derniers</label>
+          <input type="number" id="days" name="days" value="{{ days }}" min="1" max="365">
+          <label for="days">jours</label>
+          <button type="submit" class="btn-primary" style="padding:0.3rem 0.8rem;">Filtrer</button>
+        </form>
+      </div>
+
+      {% if entries %}
+        {% for entry in entries %}
+        <div class="log-entry">
+          <div class="meta">
+            {{ entry.timestamp[:19] | replace("T", " à ") }}
+          </div>
+          <div class="question">Q : {{ entry.question | e }}</div>
+          <div class="answer collapsed" id="answer-{{ loop.index }}">{{ entry.answer | e }}</div>
+          <button class="toggle-btn" onclick="toggleAnswer({{ loop.index }})">Afficher plus</button>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">Aucune conversation enregistree sur cette periode.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <script>
+    function toggleAnswer(index) {
+      const el = document.getElementById('answer-' + index);
+      const btn = el.nextElementSibling;
+      if (el.classList.contains('collapsed')) {
+        el.classList.remove('collapsed');
+        btn.textContent = 'Reduire';
+      } else {
+        el.classList.add('collapsed');
+        btn.textContent = 'Afficher plus';
+      }
+    }
+  </script>
+</body>
+</html>

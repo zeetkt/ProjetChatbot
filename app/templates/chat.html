@@ -1,0 +1,204 @@
+<!--
+  Page principale du chat.
+
+  Interface de discussion avec streaming des reponses du LLM.
+  Le JavaScript utilise l'API Fetch ReadableStream pour lire
+  les tokens un par un et les afficher en temps reel.
+
+  Format du flux SSE attendu de /api/chat :
+    data: {"token": "texte du token"}
+    data: {"token": "token suivant"}
+    ...
+    data: [DONE]
+
+  Variables Jinja2 attendues :
+    - request : objet Request
+    - document_count : nombre de passages indexes (affiché dans la navbar)
+
+  Structure de la page :
+    1. Navbar : logo, nombre de docs, liens admin/deconnexion
+    2. Zone des messages (scrollable)
+    3. Barre de saisie avec bouton d'envoi
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot Ecole</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- ─── Barre de navigation ──────────────────────────────────────────── -->
+  <nav class="navbar">
+    <div class="nav-brand">📚 Chatbot Ecole</div>
+    <div class="nav-info">
+      <span class="doc-badge" title="Documents indexes">
+        {{ document_count }} docs
+      </span>
+      <a href="/admin" class="nav-link">Admin</a>
+      <a href="/logout" class="nav-link">Deconnexion</a>
+    </div>
+  </nav>
+
+  <!-- ─── Zone des messages ────────────────────────────────────────────── -->
+  <div class="chat-layout">
+    <div id="chat-messages" class="chat-messages">
+      <!-- Message de bienvenue (message initial du bot) -->
+      <div class="message bot">
+        <div class="message-avatar">🤖</div>
+        <div class="message-content">
+          Bonjour ! Je suis l'assistant pedagogique. Posez-moi des questions
+          sur les cours et documents de l'ecole.
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Barre de saisie ─────────────────────────────────────────────── -->
+    <div class="chat-input-container">
+      <form id="chat-form" autocomplete="off">
+        <input
+          type="text"
+          id="message-input"
+          placeholder="Posez votre question..."
+          required
+          autofocus
+        >
+        <button type="submit" id="send-btn" title="Envoyer">Envoyer</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── JavaScript : gestion du chat avec streaming ──────────────────── -->
+  <script>
+    // ─── References aux elements du DOM ────────────────────────────────
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const messages = document.getElementById('chat-messages');
+
+    /**
+     * Ajoute un message a l'interface de chat.
+     *
+     * Cree un element div.message et l'ajoute a la zone des messages.
+     * Le role determine l'avatar (👤 pour user, 🤖 pour bot) et
+     * l'alignement (a droite pour user, a gauche pour bot).
+     *
+     * @param {'user'|'bot'} role - Qui emet le message.
+     * @param {string} text - Contenu du message (HTML autorise).
+     * @returns {HTMLElement} L'element .message-content cree (pour mise a jour ulterieure).
+     */
+    function addMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.innerHTML = `
+        <div class="message-avatar">${role === 'user' ? '👤' : '🤖'}</div>
+        <div class="message-content">${text}</div>
+      `;
+      messages.appendChild(div);
+      // Scroll automatique vers le bas
+      messages.scrollTop = messages.scrollHeight;
+      return div.querySelector('.message-content');
+    }
+
+    /**
+     * Echappe les caracteres HTML pour eviter les injections XSS.
+     *
+     * Utilise un element div temporaire pour convertir les caracteres
+     * speciaux en entites HTML (ex: < → &lt;).
+     *
+     * @param {string} text - Texte a echapper.
+     * @returns {string} Texte avec les entites HTML.
+     */
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ─── Gestionnaire de soumission du formulaire ────────────────────────
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();  // Empeche le rechargement de la page
+      const question = input.value.trim();
+      if (!question) return;
+
+      // ─── Affiche la question de l'utilisateur ──────────────────────────
+      input.value = '';
+      addMessage('user', escapeHtml(question));
+
+      // ─── Prepare le message du bot (avec indicateur de chargement) ─────
+      const botMsg = addMessage('bot', '<span class="typing">Reflexion en cours...</span>');
+      sendBtn.disabled = true;
+      input.disabled = true;
+
+      try {
+        // ─── Envoi de la requete POST vers l'API de streaming ────────────
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: question }),
+        });
+
+        if (!response.ok) {
+          // Si la reponse n'est pas 200 OK, on affiche l'erreur
+          const errText = await response.text();
+          botMsg.innerHTML = 'Erreur : ' + escapeHtml(errText);
+          sendBtn.disabled = false;
+          input.disabled = false;
+          return;
+        }
+
+        // ─── Lecture du flux SSE (Server-Sent Events) ────────────────────
+        // response.body.getReader() permet de lire le corps de la reponse
+        // sous forme de flux binaire, token par token.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullAnswer = '';
+        let buffer = '';  // Buffer pour gerer les fragments de lignes SSE
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Decodage du chunk binaire en texte
+          buffer += decoder.decode(value, { stream: true });
+
+          // Decoupage du buffer en lignes SSE
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';  // Garde la ligne incomplete pour le prochain chunk
+
+          for (const line of lines) {
+            // Les lignes SSE commencent par "data: "
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+
+              // [DONE] signale la fin du flux
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.token) {
+                  fullAnswer += parsed.token;
+                  // Mise a jour du message du bot avec la reponse complete
+                  // (a chaque nouveau token, on re-affiche tout le texte)
+                  botMsg.innerHTML = escapeHtml(fullAnswer).replace(/\n/g, '<br>');
+                  messages.scrollTop = messages.scrollHeight;
+                }
+              } catch (err) {
+                // Ignorer les lignes mal formatees
+              }
+            }
+          }
+        }
+      } catch (err) {
+        botMsg.innerHTML = 'Erreur de connexion au serveur.';
+      }
+
+      // ─── Re-activation du formulaire ──────────────────────────────────
+      sendBtn.disabled = false;
+      input.disabled = false;
+      input.focus();
+    });
+  </script>
+</body>
+</html>

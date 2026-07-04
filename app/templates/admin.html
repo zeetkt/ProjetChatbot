@@ -1,0 +1,97 @@
+<!--
+  Page d'administration.
+
+  Permet aux administrateurs de :
+  - Voir le nombre total de passages indexes dans ChromaDB.
+  - Uploader de nouveaux documents (PDF, DOCX, TXT, MD, HTML).
+  - Voir la liste des fichiers deja importes.
+  - Supprimer des fichiers.
+
+  Variables Jinja2 attendues :
+    - request : objet Request
+    - document_count : nombre total de passages indexes
+    - files : liste des noms de fichiers dans le dossier documents/
+    - message : message de succes apres un import (None si pas de message)
+    - config : module de config (pour acceder a MAX_UPLOAD_SIZE_MB)
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Chatbot Ecole</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- ─── Barre de navigation ──────────────────────────────────────────── -->
+  <nav class="navbar">
+    <div class="nav-brand">📚 Chatbot Ecole — Administration</div>
+    <div class="nav-info">
+      <span class="doc-badge">{{ document_count }} passages indexes</span>
+      <a href="/admin/logs" class="nav-link">Logs</a>
+      <a href="/" class="nav-link">Chat</a>
+      <a href="/logout" class="nav-link">Deconnexion</a>
+    </div>
+  </nav>
+
+  <div class="admin-layout">
+    <!-- ─── Section d'upload ───────────────────────────────────────────── -->
+    <section class="admin-card">
+      <h2>📤 Importer un document</h2>
+      <p>
+        Formats acceptes : PDF, DOCX, TXT, MD, HTML
+        (max {{ config.MAX_UPLOAD_SIZE_MB }} Mo)
+      </p>
+
+      <!--
+        Formulaire d'upload multipart.
+        enctype="multipart/form-data" est obligatoire pour les fichiers.
+        La route /admin/upload dans admin_router.py traite ce formulaire.
+      -->
+      <form action="/admin/upload" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+          <input type="file" name="file" required
+                 accept=".pdf,.docx,.doc,.txt,.md,.html,.htm">
+        </div>
+        <button type="submit" class="btn-primary">Importer</button>
+      </form>
+
+      <!-- Message de succes apres import (affiche uniquement si present) -->
+      {% if message %}
+      <div class="success-message">{{ message }}</div>
+      {% endif %}
+    </section>
+
+    <!-- ─── Section liste des fichiers ──────────────────────────────────── -->
+    <section class="admin-card">
+      <h2>📂 Documents importes</h2>
+
+      {% if files %}
+      <ul class="file-list">
+        {% for f in files %}
+        <li>
+          <span class="file-name">{{ f }}</span>
+
+          <!--
+            Bouton de suppression.
+            Envoie un POST vers /admin/delete/{nom_fichier}.
+            Une confirmation JavaScript est demandée avant la soumission.
+          -->
+          <form action="/admin/delete/{{ f | urlencode }}" method="post"
+                style="display:inline"
+                onsubmit="return confirm('Supprimer {{ f }} ?');">
+            <button type="submit" class="btn-delete" title="Supprimer">
+              Supprimer
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <!-- Message affiche quand aucun fichier n'est importe -->
+      <p class="empty-state">Aucun document importe pour le moment.</p>
+      {% endif %}
+    </section>
+  </div>
+</body>
+</html>

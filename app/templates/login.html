@@ -1,0 +1,52 @@
+<!--
+  Page de connexion du chatbot.
+
+  Affiche un formulaire simple avec un champ mot de passe.
+  Le style est minimaliste et centre (classe .login-body).
+  En cas d'erreur, le message {{ error }} est affiché en rouge.
+
+  Variables Jinja2 attendues :
+    - request : objet Request (obligatoire pour Jinja2)
+    - error : message d'erreur (None si pas d'erreur)
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion - Chatbot Ecole</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <!-- Emoji livre en guise de logo -->
+        <div class="logo">📚</div>
+        <h1>Chatbot Ecole</h1>
+        <p>Assistant pedagogique</p>
+      </div>
+
+      <!--
+        Formulaire POST vers /login.
+        Le champ "password" est recupere par le routeur auth_router.py
+        via Form(...) dans la fonction login_post().
+      -->
+      <form method="post" action="/login">
+        <div class="form-group">
+          <label for="password">Mot de passe</label>
+          <input type="password" id="password" name="password"
+                 placeholder="Entrez le mot de passe" required autofocus>
+        </div>
+
+        <!-- Affichage conditionnel d'une erreur (mot de passe incorrect) -->
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <button type="submit" class="btn-primary">Se connecter</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# ─── Docker Compose pour le chatbot scolaire RAG ─────────────────────────────
+# Déploiement simplifié : un seul service (pas de base de données séparée,
+# ChromaDB est embarqué dans le processus Python).
+#
+# Démarrage :
+#   docker compose up -d
+# Arrêt :
+#   docker compose down
+# Logs :
+#   docker compose logs -f
+#
+# Accès depuis le navigateur : http://IP_DU_VPS:8080
+
+services:
+  chatbot:
+    # Construction à partir du Dockerfile local
+    build: .
+
+    # Nom du conteneur (pour docker stop/start/logs par nom)
+    container_name: school-chatbot
+
+    # Redémarrage automatique sauf si arrêté manuellement
+    # Utile pour redémarrer après un reboot du VPS
+    restart: unless-stopped
+
+    # Mapping des ports : HOTE:CONTENEUR
+    # L'hôte écoute sur 8080, redirige vers le port 8000 du conteneur (uvicorn)
+    ports:
+      - "8080:8000"
+
+    # Fichier de variables d'environnement (non versionné)
+    # Contient : OPENROUTER_API_KEY, CHAT_PASSWORD, SESSION_SECRET
+    # Créer .env à partir de .env.example et le remplir
+    env_file:
+      - .env
+
+    # Volumes persistants (données conservées entre les redémarrages)
+    volumes:
+      # Base vectorielle ChromaDB (index des embeddings)
+      - ./chroma_db:/app/chroma_db
+      # Documents importés via l'interface admin
+      - ./documents:/app/documents
+      # Logs des conversations du chat
+      - ./chat_logs:/app/chat_logs
+
+    # Variables d'environnement supplémentaires (écrasent celles du .env si conflit)
+    # Utile pour passer les chemins de volumes comme variables
+    environment:
+      - CHROMA_DB_PATH=/app/chroma_db
+      - DOCUMENTS_PATH=/app/documents
+      - LOGS_PATH=/app/chat_logs

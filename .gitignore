@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+chroma_db/
+documents/
+chat_logs/
+*.egg-info/
+dist/
+.venv/
+venv/
