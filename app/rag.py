@@ -73,30 +73,43 @@ def _detect_topic(question: str) -> str | None:
     return None
 
 
-def _dedup_chunks(chunks: list[dict]) -> list[dict]:
-    seen = set()
-    result = []
-    for c in chunks:
-        h = hash(c["content"])
-        if h not in seen:
-            seen.add(h)
-            result.append(c)
-    return result
-
-
-def _rerank_by_topic(chunks: list[dict], topic: str | None) -> list[dict]:
-    if not topic:
-        return chunks
-    topic_lower = topic.lower()
-    match = []
-    other = []
+def _diversify_chunks(
+    chunks: list[dict],
+    topic: str | None = None,
+    max_per_source: int = 4,
+    max_total: int = 10,
+) -> list[dict]:
+    # 1. Separer les chunks du document cible et des autres
+    target = []
+    others = []
+    topic_lower = topic.lower() if topic else None
     for c in chunks:
         src = c["metadata"].get("source", "").lower()
-        if topic_lower in src:
-            match.append(c)
+        if topic_lower and topic_lower in src:
+            target.append(c)
         else:
-            other.append(c)
-    return match + other
+            others.append(c)
+
+    # 2. Prendre max max_per_source de chaque source dans le meme ordre
+    def sample(source_list, label):
+        seen = set()
+        result = []
+        per_source = {}
+        for c in source_list:
+            src = c["metadata"].get("source", "")
+            if src not in per_source:
+                per_source[src] = []
+            # Dedup par contenu
+            h = hash(c["content"])
+            if h not in seen:
+                seen.add(h)
+                per_source[src].append(c)
+        for src_list in per_source.values():
+            result.extend(src_list[:max_per_source])
+        return result
+
+    result = sample(target, "target") + sample(others, "others")
+    return result[:max_total]
 
 
 async def ask(
@@ -138,14 +151,12 @@ async def ask(
             return
 
     # Etape 1 : RETRIEVAL - recherche les chunks pertinents dans ChromaDB
-    TOP_K = 15
-
-    # Recherche large, puis reclassement par topic si detecte
-    context_chunks = search_similar(question, k=TOP_K)
-    context_chunks = _dedup_chunks(context_chunks)
+    # On cherche large (k=25) pour couvrir plusieurs sources, puis on
+    # diversifie : max 4 chunks par document source. Si un sujet est
+    # detecte (CDA, TSSR...), on sur-represente le document cible.
+    context_chunks = search_similar(question, k=25)
     topic = _detect_topic(question)
-    if topic:
-        context_chunks = _rerank_by_topic(context_chunks, topic)
+    context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=4)
 
     # Si aucun document n'est indexe, on informe l'utilisateur
     if not context_chunks:
