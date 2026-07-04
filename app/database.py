@@ -64,6 +64,11 @@ def get_collection() -> Collection:
     apres un redemarrage), on la recupere. Sinon, on la cree avec la
     fonction d'embedding personnalisee.
 
+    IMPORTANT : ChromaDB ne persiste pas les fonctions d'embedding custom
+    entre les sessions. On utilise get_or_create_collection() pour forcer
+    l'utilisation de notre EmbeddingFunction (sentence-transformers)
+    meme sur une collection existante.
+
     Note : On ne met pas cette fonction en cache (@lru_cache) car la
     collection pourrait etre modifiee entre deux appels (ajout de donnees).
 
@@ -71,14 +76,10 @@ def get_collection() -> Collection:
         Collection: L'objet collection ChromaDB.
     """
     client = get_client()
-    try:
-        return client.get_collection(cfg.COLLECTION_NAME)
-    except InvalidCollectionException:
-        # La collection n'existe pas encore → on la cree
-        return client.create_collection(
-            name=cfg.COLLECTION_NAME,
-            embedding_function=embedding_function,  # Notre fonction sentence-transformers
-        )
+    return client.get_or_create_collection(
+        name=cfg.COLLECTION_NAME,
+        embedding_function=embedding_function,
+    )
 
 
 def add_document_chunks(chunks: list[str], metadata_list: list[dict]) -> list[str]:
