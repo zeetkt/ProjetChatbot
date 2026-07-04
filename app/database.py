@@ -121,7 +121,7 @@ def add_document_chunks(chunks: list[str], metadata_list: list[dict]) -> list[st
     return ids
 
 
-def search_similar(query: str, k: int = 5) -> list[dict]:
+def search_similar(query: str, k: int = 5, where: dict | None = None) -> list[dict]:
     """
     Recherche les chunks les plus proches semantiquement d'une requete.
 
@@ -131,9 +131,13 @@ def search_similar(query: str, k: int = 5) -> list[dict]:
     3. Les k chunks les plus proches (similarite cosinus) sont retournes.
     4. Ces chunks serviront de contexte pour le LLM.
 
+    Le parametre optionnel `where` permet de filtrer par metadonnees
+    (ex: {"source": {"$contains": "CDA"}}).
+
     Args:
         query: La question ou requete de l'utilisateur.
         k: Nombre de chunks a retourner (defaut: 5).
+        where: Filtre optionnel sur les metadonnees (format ChromaDB).
 
     Returns:
         list[dict]: Liste des chunks trouves, chacun contenant :
@@ -142,7 +146,10 @@ def search_similar(query: str, k: int = 5) -> list[dict]:
             - "distance": score de similarite (0 = parfait, plus = moins similaire)
     """
     collection = get_collection()
-    results = collection.query(query_texts=[query], n_results=k)
+    params = {"query_texts": [query], "n_results": k}
+    if where:
+        params["where"] = where
+    results = collection.query(**params)
 
     documents = []
     if results["documents"]:
