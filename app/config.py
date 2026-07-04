@@ -60,22 +60,24 @@ CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "200"))
 
 # ─── Upload de fichiers ─────────────────────────────────────────────────────────
 # Taille maximale d'un fichier uploade (en mega-octets).
-# Limite a 20 Mo par defaut pour eviter les fichiers trop volumineux
-# qui pourraient saturer le serveur ou ralentir l'indexation.
-MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "20"))
+MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
 
 # Taille maximale en octets (calculee automatiquement depuis MAX_UPLOAD_SIZE_MB).
-# 1 Mo = 1024 * 1024 octets.
 MAX_UPLOAD_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
+# Nombre maximal de fichiers par upload (multi-file).
+MAX_FILES_PER_UPLOAD = int(os.environ.get("MAX_FILES_PER_UPLOAD", "50"))
+
 # Extensions de fichiers autorisees a l'upload.
-# Chaque extension correspond a un parseur specifique dans ingestion.py.
-# - .pdf : PDF Portable Document Format
-# - .docx / .doc : Documents Microsoft Word
-# - .txt : Fichiers texte brut
-# - .md : Fichiers Markdown
-# - .html / .htm : Pages web
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".html", ".htm"}
+
+# ─── Import de sites web (crawling) ──────────────────────────────────────────────
+# Nombre maximal de pages a crawler par import.
+WEB_CRAWL_MAX_PAGES = int(os.environ.get("WEB_CRAWL_MAX_PAGES", "50"))
+# Profondeur maximale de crawling (0 = page unique, 1 = liens directs, etc.).
+WEB_CRAWL_MAX_DEPTH = int(os.environ.get("WEB_CRAWL_MAX_DEPTH", "2"))
+# Delai entre chaque requete HTTP lors du crawl (en secondes).
+WEB_CRAWL_DELAY = float(os.environ.get("WEB_CRAWL_DELAY", "0.5"))
 
 # ─── Chemins de stockage ────────────────────────────────────────────────────────
 # Chemin vers le dossier de la base vectorielle ChromaDB.

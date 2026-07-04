@@ -125,6 +125,29 @@ def _deduplicate_collection_once(collection: Collection) -> None:
         logger.warning("Erreur lors du nettoyage des doublons: %s", e, exc_info=True)
 
 
+def delete_document_by_sources(sources: list[str]) -> int:
+    """
+    Supprime de ChromaDB tous les chunks dont la source est dans la liste.
+
+    Args:
+        sources: Liste des noms de fichiers sources a supprimer.
+
+    Returns:
+        int: Nombre de chunks supprimes.
+    """
+    collection = get_collection()
+    try:
+        result = collection.get(where={"source": {"$in": sources}})
+        ids = result.get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+            logger.info("Suppression de %s chunks (sources: %s)", len(ids), sources)
+        return len(ids)
+    except Exception as e:
+        logger.error("Erreur suppression chunks: %s", e, exc_info=True)
+        return 0
+
+
 def add_document_chunks(chunks: list[str], metadata_list: list[dict]) -> list[str]:
     """
     Ajoute des chunks de document a la base vectorielle.

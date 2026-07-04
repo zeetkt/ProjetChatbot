@@ -2,160 +2,173 @@
 Routeur d'administration : gestion des documents.
 
 Gere les routes liees a l'administration des documents :
-- GET  /admin          : affiche le tableau de bord admin
-- POST /admin/upload   : importe un nouveau fichier
-- POST /admin/delete/  : supprime un fichier
+- GET  /admin                  : affiche le tableau de bord admin
+- POST /admin/upload           : importe des fichiers (multi)
+- POST /admin/import-url       : importe une page web / site
+- POST /admin/delete/{filename}  : supprime un fichier
+- POST /admin/delete-webpage/{filename} : supprime une page web d'un crawl
+- POST /admin/delete-website/{crawl_id} : supprime tout un site importe
 
 L'acces a toutes ces routes est protege par l'authentification.
-Seuls les utilisateurs connectes peuvent gerer les documents.
 """
 
 import os
 import logging
 from pathlib import Path
-from fastapi import APIRouter, Request, UploadFile, File, Depends, HTTPException
+from typing import List
+from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.status import HTTP_303_SEE_OTHER
 import app.config as cfg
 from app.auth import require_auth
 from app.security import limiter
-from app.ingestion import ingest_file
-from app.database import get_document_count
+from app.ingestion import ingest_file, ingest_url, remove_web_crawl, remove_webpage_from_crawl, _load_web_crawls
+from app.database import get_document_count, delete_document_by_sources
 from app.chat_logger import get_logs
 
 logger = logging.getLogger(__name__)
 
-# ─── Initialisation du routeur ─────────────────────────────────────────────────
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-@router.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, _=Depends(require_auth)):
-    """
-    Affiche le tableau de bord d'administration.
-
-    Cette page permet aux administrateurs de :
-    - Voir le nombre total de passages indexes.
-    - Uploader de nouveaux documents.
-    - Voir la liste des fichiers deja importes.
-    - Supprimer des fichiers.
-
-    Args:
-        request: La requete HTTP entrante.
-        _: Dependance d'authentification.
-
-    Returns:
-        HTMLResponse: La page d'administration HTML.
-    """
+def _get_admin_context(request: Request, message: str | None = None):
+    """Génère le contexte partagé pour les pages admin."""
     doc_count = get_document_count()
-
-    # Recupere la liste des fichiers deja importes
     os.makedirs(cfg.DOCUMENTS_PATH, exist_ok=True)
-    files = sorted(os.listdir(cfg.DOCUMENTS_PATH)) if os.path.isdir(cfg.DOCUMENTS_PATH) else []
+    raw_files = sorted(os.listdir(cfg.DOCUMENTS_PATH)) if os.path.isdir(cfg.DOCUMENTS_PATH) else []
+    files = [f for f in raw_files if not f.startswith(".")]
+    web_crawls = _load_web_crawls()
+    return {
+        "request": request,
+        "document_count": doc_count,
+        "files": files,
+        "web_crawls": web_crawls,
+        "message": message,
+        "config": cfg,
+    }
 
-    return templates.TemplateResponse(
-        "admin.html",
-        {
-            "request": request,
-            "document_count": doc_count,
-            "files": files,
-            "message": None,
-            "config": cfg,  # Passe la config pour acceder a MAX_UPLOAD_SIZE_MB dans le template
-        },
-    )
 
-
-@router.post("/admin/upload")
-@limiter.limit("10/minute")  # Maximum 10 uploads par minute par IP
-async def upload_file(
-    request: Request,
-    file: UploadFile = File(...),  # Fichier envoye via le formulaire
-    _=Depends(require_auth),
-):
-    """
-    Importe un nouveau fichier dans la base de connaissances.
-
-    Etapes realisees :
-    1. Verifie que l'extension du fichier est autorisee.
-    2. Verifie que la taille du fichier ne depasse pas la limite.
-    3. Sauvegarde le fichier dans le dossier documents/.
-    4. Parse le fichier, decoupe en chunks, indexe dans ChromaDB.
-    5. Affiche un message de succes avec le nombre de passages indexes.
-
-    Securite :
-    - Verification de l'extension (pas seulement du MIME type)
-    - Limitation de taille
-    - Nombre d'uploads limite (rate limiting)
-    - Si l'analyse echoue, le fichier est supprime (pas de fichier orphelin)
-
-    Args:
-        request: La requete HTTP entrante.
-        file: Le fichier uploade (UploadFile FastAPI).
-        _: Dependance d'authentification.
-
-    Returns:
-        HTMLResponse: Re-affiche la page admin avec un message de succes/erreur.
-
-    Raises:
-        HTTPException 400: Si l'extension n'est pas autorisee ou fichier trop volumineux.
-        HTTPException 500: Si l'analyse du fichier echoue.
-    """
-    # ─── Validation du nom de fichier (anti path traversal) ────────────────
-    raw_filename = file.filename or ""
-    # Supprime tout chemin relatif pour ne garder que le nom de base
-    safe_filename = Path(raw_filename).name
-    if not safe_filename or safe_filename != Path(raw_filename).parts[-1]:
+def _validate_filename(raw_filename: str) -> str:
+    """Valide et nettoie un nom de fichier (anti path traversal)."""
+    safe = Path(raw_filename).name
+    if not safe or safe != Path(raw_filename).parts[-1]:
         raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
-    # Rejette les noms avec slash, backslash, ou ..
     if "/" in raw_filename or "\\" in raw_filename or ".." in raw_filename:
         raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+    return safe
 
-    # ─── Validation de l'extension ──────────────────────────────────────────
-    ext = Path(safe_filename).suffix.lower()
-    if ext not in cfg.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Format non supporte : {ext}. Formats acceptes : {', '.join(cfg.ALLOWED_EXTENSIONS)}",
-        )
 
-    # ─── Validation de la taille ────────────────────────────────────────────
-    content = await file.read()
-    if len(content) > cfg.MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Fichier trop volumineux (max {cfg.MAX_UPLOAD_SIZE_MB} Mo).",
-        )
-
-    # ─── Sauvegarde du fichier ──────────────────────────────────────────────
+def _validate_and_save_file(content: bytes, safe_filename: str) -> str:
+    """Sauvegarde un fichier valide dans documents/."""
     os.makedirs(cfg.DOCUMENTS_PATH, exist_ok=True)
     dest = os.path.join(cfg.DOCUMENTS_PATH, safe_filename)
     with open(dest, "wb") as f:
         f.write(content)
+    return dest
 
-    # ─── Indexation dans ChromaDB ──────────────────────────────────────────
+
+# ─── Page d'accueil admin ─────────────────────────────────────────────────────
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, _=Depends(require_auth)):
+    return templates.TemplateResponse("admin.html", _get_admin_context(request))
+
+
+# ─── Upload multi-fichiers ────────────────────────────────────────────────────
+
+@router.post("/admin/upload")
+@limiter.limit("10/minute")
+async def upload_files(
+    request: Request,
+    files: List[UploadFile] = File(...),
+    _=Depends(require_auth),
+):
+    if len(files) > cfg.MAX_FILES_PER_UPLOAD:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Trop de fichiers (max {cfg.MAX_FILES_PER_UPLOAD}).",
+        )
+
+    results: list[dict] = []
+
+    for file in files:
+        raw_filename = file.filename or ""
+        try:
+            safe_filename = _validate_filename(raw_filename)
+            ext = Path(safe_filename).suffix.lower()
+            if ext not in cfg.ALLOWED_EXTENSIONS:
+                results.append({
+                    "name": raw_filename,
+                    "success": False,
+                    "error": f"Format non supporte : {ext}",
+                })
+                continue
+
+            content = await file.read()
+            if len(content) > cfg.MAX_UPLOAD_SIZE:
+                results.append({
+                    "name": safe_filename,
+                    "success": False,
+                    "error": f"Fichier trop volumineux (max {cfg.MAX_UPLOAD_SIZE_MB} Mo).",
+                })
+                continue
+
+            dest = _validate_and_save_file(content, safe_filename)
+            chunk_count = ingest_file(dest)
+            results.append({
+                "name": safe_filename,
+                "success": True,
+                "chunks": chunk_count,
+            })
+        except Exception as e:
+            logger.error("Erreur upload %s: %s", raw_filename, e)
+            results.append({
+                "name": raw_filename,
+                "success": False,
+                "error": "Erreur lors de l'analyse du fichier.",
+            })
+
+    ctx = _get_admin_context(request, message=f"{sum(1 for r in results if r['success'])} fichier(s) importe(s) sur {len(results)}.")
+    ctx["upload_results"] = results
+    return templates.TemplateResponse("admin.html", ctx)
+
+
+# ─── Import de site web (URL) ─────────────────────────────────────────────────
+
+@router.post("/admin/import-url")
+@limiter.limit("5/minute")
+async def import_url(
+    request: Request,
+    url: str = Form(...),
+    depth: int = Form(cfg.WEB_CRAWL_MAX_DEPTH),
+    max_pages: int = Form(cfg.WEB_CRAWL_MAX_PAGES),
+    _=Depends(require_auth),
+):
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL invalide. Doit commencer par http:// ou https://")
+    depth = max(0, min(depth, 5))
+    max_pages = max(1, min(max_pages, 200))
+
     try:
-        chunk_count = ingest_file(dest)
+        result = ingest_url(url, max_pages=max_pages, max_depth=depth)
+        n = result.get("pages", 0)
+        if n == 0:
+            msg = f"Aucune page n'a pu etre importee depuis {url}."
+        else:
+            ok = sum(1 for v in result["results"].values() if isinstance(v, int))
+            msg = f"✓ {n} page(s) importee(s) depuis {url} ({ok} indexees avec succes, crawl_id: {result['crawl_id']})."
     except Exception as e:
-        os.remove(dest)
-        logger.error("Erreur analyse fichier %s: %s", safe_filename, e)
-        raise HTTPException(status_code=500, detail="Erreur lors de l'analyse du fichier. Format peut-etre corrompu ou non supporte.")
+        logger.error("Erreur import url %s: %s", url, e)
+        msg = f"Erreur lors de l'import de {url} : {e}"
 
-    # ─── Retourne la page admin avec le message de succes ──────────────────
-    doc_count = get_document_count()
-    files = sorted(os.listdir(cfg.DOCUMENTS_PATH))
-    return templates.TemplateResponse(
-        "admin.html",
-        {
-            "request": request,
-            "document_count": doc_count,
-            "files": files,
-            "message": f"✓ {safe_filename} importe avec succes ({chunk_count} passages indexes).",
-            "config": cfg,
-        },
-    )
+    ctx = _get_admin_context(request, message=msg)
+    ctx["upload_results"] = []
+    return templates.TemplateResponse("admin.html", ctx)
 
+
+# ─── Suppression d'un fichier ─────────────────────────────────────────────────
 
 @router.post("/admin/delete/{filename}")
 @limiter.limit("30/minute")
@@ -164,35 +177,76 @@ async def delete_file(
     filename: str,
     _=Depends(require_auth),
 ):
-    """
-    Supprime un fichier importe.
-
-    Note importante : cette fonction supprime uniquement le fichier
-    du dossier documents/. Elle ne supprime PAS les chunks de la
-    base vectorielle ChromaDB. Les embeddings restent donc presents
-    et peuvent encore etre retrouves par les requetes.
-    (TODO : ajouter la suppression des chunks associes dans ChromaDB)
-
-    Args:
-        request: La requete HTTP entrante.
-        filename: Le nom du fichier a supprimer (extrait de l'URL).
-        _: Dependance d'authentification.
-
-    Returns:
-        RedirectResponse: Redirige vers le tableau de bord admin.
-    """
-    # Sanitize : interdit les chemins relatifs (path traversal)
-    safe_name = Path(filename).name
-    if safe_name != filename or ".." in filename or "/" in filename:
-        raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+    safe_name = _validate_filename(filename)
     filepath = os.path.join(cfg.DOCUMENTS_PATH, safe_name)
-    # Verifie que le fichier est bien dans le dossier autorise
     if not os.path.realpath(filepath).startswith(os.path.realpath(cfg.DOCUMENTS_PATH)):
         raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+
+    # Supprime les chunks de ChromaDB
+    deleted = delete_document_by_sources([safe_name])
+
+    # Supprime le fichier
     if os.path.isfile(filepath):
         os.remove(filepath)
-    return RedirectResponse(url="/admin", status_code=HTTP_303_SEE_OTHER)
 
+    # Nettoie les métadonnées de crawl si besoin
+    remove_webpage_from_crawl(safe_name)
+
+    ctx = _get_admin_context(
+        request,
+        message=f"✓ {safe_name} supprime ({deleted} passage(s) supprime(s) de la base).",
+    )
+    return templates.TemplateResponse("admin.html", ctx)
+
+
+# ─── Suppression d'une page web d'un crawl ────────────────────────────────────
+
+@router.post("/admin/delete-webpage/{filename}")
+@limiter.limit("30/minute")
+async def delete_webpage(
+    request: Request,
+    filename: str,
+    _=Depends(require_auth),
+):
+    safe_name = _validate_filename(filename)
+    filepath = os.path.join(cfg.DOCUMENTS_PATH, safe_name)
+    if not os.path.realpath(filepath).startswith(os.path.realpath(cfg.DOCUMENTS_PATH)):
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+
+    deleted = delete_document_by_sources([safe_name])
+    if os.path.isfile(filepath):
+        os.remove(filepath)
+    remove_webpage_from_crawl(safe_name)
+
+    ctx = _get_admin_context(
+        request,
+        message=f"✓ Page {safe_name} supprimee ({deleted} passage(s)).",
+    )
+    return templates.TemplateResponse("admin.html", ctx)
+
+
+# ─── Suppression d'un site complet ────────────────────────────────────────────
+
+@router.post("/admin/delete-website/{crawl_id}")
+@limiter.limit("30/minute")
+async def delete_website(
+    request: Request,
+    crawl_id: str,
+    _=Depends(require_auth),
+):
+    filenames = remove_web_crawl(crawl_id)
+    total = 0
+    for fname in filenames:
+        total += delete_document_by_sources([fname])
+
+    ctx = _get_admin_context(
+        request,
+        message=f"✓ Site supprime ({len(filenames)} fichier(s), {total} passage(s)).",
+    )
+    return templates.TemplateResponse("admin.html", ctx)
+
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
 
 @router.get("/admin/logs", response_class=HTMLResponse)
 @limiter.limit("30/minute")
@@ -201,20 +255,6 @@ async def admin_logs(
     days: int = 7,
     _=Depends(require_auth),
 ):
-    """
-    Affiche les logs des conversations du chat.
-
-    Page d'administration qui liste les derniers echanges
-    (question + reponse) classes par date decroissante.
-
-    Args:
-        request: La requete HTTP entrante.
-        days: Nombre de jours a remonter (defaut: 7, depuis le query param ?days=).
-        _: Dependance d'authentification.
-
-    Returns:
-        HTMLResponse: La page des logs.
-    """
     days = max(1, min(days, 365))
     entries = get_logs(days=days, limit=200)
     doc_count = get_document_count()

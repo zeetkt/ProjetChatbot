@@ -4,15 +4,18 @@
   Permet aux administrateurs de :
   - Voir le nombre total de passages indexes dans ChromaDB.
   - Uploader de nouveaux documents (PDF, DOCX, TXT, MD, HTML).
+  - Importer des pages web / sites complets.
   - Voir la liste des fichiers deja importes.
-  - Supprimer des fichiers.
+  - Supprimer des fichiers un par un ou par site.
 
   Variables Jinja2 attendues :
     - request : objet Request
     - document_count : nombre total de passages indexes
     - files : liste des noms de fichiers dans le dossier documents/
-    - message : message de succes apres un import (None si pas de message)
-    - config : module de config (pour acceder a MAX_UPLOAD_SIZE_MB)
+    - web_crawls : dict des crawls importes
+    - message : message de succes apres un import
+    - upload_results : liste de dicts {name, success, chunks|error}
+    - config : module de config
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -23,7 +26,6 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <!-- ─── Barre de navigation ──────────────────────────────────────────── -->
   <nav class="navbar">
     <div class="nav-brand">📚 Chatbot Ecole — Administration</div>
     <div class="nav-info">
@@ -35,60 +37,138 @@
   </nav>
 
   <div class="admin-layout">
-    <!-- ─── Section d'upload ───────────────────────────────────────────── -->
-    <section class="admin-card">
-      <h2>📤 Importer un document</h2>
-      <p>
-        Formats acceptes : PDF, DOCX, TXT, MD, HTML
-        (max {{ config.MAX_UPLOAD_SIZE_MB }} Mo)
-      </p>
+    <!-- ─── Message global ─────────────────────────────────────────────── -->
+    {% if message %}
+    <div class="success-message">{{ message }}</div>
+    {% endif %}
 
-      <!--
-        Formulaire d'upload multipart.
-        enctype="multipart/form-data" est obligatoire pour les fichiers.
-        La route /admin/upload dans admin_router.py traite ce formulaire.
-      -->
+    <!-- ─── Résultats d'upload multi-fichiers ──────────────────────────── -->
+    {% if upload_results %}
+    <section class="admin-card">
+      <h2>📋 Résultats de l'import</h2>
+      <ul class="result-list">
+        {% for r in upload_results %}
+        <li class="result-item {% if r.success %}result-ok{% else %}result-err{% endif %}">
+          <span class="result-icon">{{ "✓" if r.success else "✕" }}</span>
+          <span class="result-name">{{ r.name }}</span>
+          {% if r.success %}
+          <span class="result-detail">{{ r.chunks }} passages</span>
+          {% else %}
+          <span class="result-detail">{{ r.error }}</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <!-- ─── Section d'upload fichiers ──────────────────────────────────── -->
+    <section class="admin-card">
+      <h2>📤 Importer des fichiers</h2>
+      <p>
+        Formats : PDF, DOCX, TXT, MD, HTML
+        (max {{ config.MAX_UPLOAD_SIZE_MB }} Mo, jusqu'à {{ config.MAX_FILES_PER_UPLOAD }} fichiers)
+      </p>
       <form action="/admin/upload" method="post" enctype="multipart/form-data">
         <div class="form-group">
-          <input type="file" name="file" required
+          <input type="file" name="files" multiple required
                  accept=".pdf,.docx,.doc,.txt,.md,.html,.htm">
         </div>
-        <button type="submit" class="btn-primary">Importer</button>
+        <button type="submit" class="btn-primary">Importer les fichiers</button>
       </form>
-
-      <!-- Message de succes apres import (affiche uniquement si present) -->
-      {% if message %}
-      <div class="success-message">{{ message }}</div>
-      {% endif %}
     </section>
 
-    <!-- ─── Section liste des fichiers ──────────────────────────────────── -->
+    <!-- ─── Section d'import URL ───────────────────────────────────────── -->
     <section class="admin-card">
-      <h2>📂 Documents importes</h2>
+      <h2>🌐 Importer un site web</h2>
+      <p>
+        Importe une page web ou un site complet par crawl.
+        Les pages sont indexees et apparaissent sous "Sites web".
+      </p>
+      <form action="/admin/import-url" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+          <label for="url">URL du site</label>
+          <input type="url" name="url" id="url" required
+                 placeholder="https://example.com/cours">
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label for="depth">Profondeur</label>
+            <select name="depth" id="depth">
+              <option value="0">Page unique</option>
+              <option value="1">Liens directs</option>
+              <option value="2" selected>Profondeur 2</option>
+              <option value="3">Profondeur 3</option>
+            </select>
+          </div>
+          <div class="form-group form-group-half">
+            <label for="max_pages">Pages max</label>
+            <select name="max_pages" id="max_pages">
+              <option value="10">10 pages</option>
+              <option value="25">25 pages</option>
+              <option value="50" selected>50 pages</option>
+              <option value="100">100 pages</option>
+              <option value="200">200 pages</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary">Importer le site</button>
+      </form>
+    </section>
+
+    <!-- ─── Section sites web importes ─────────────────────────────────── -->
+    {% if web_crawls %}
+    <section class="admin-card">
+      <h2>🌳 Sites web importes</h2>
+      {% for crawl_id, crawl in web_crawls.items() %}
+      <details class="crawl-group" {% if loop.first %}open{% endif %}>
+        <summary class="crawl-header">
+          <span class="crawl-domain">{{ crawl.domain }}</span>
+          <span class="crawl-meta">
+            {{ crawl.pages | length }} page(s) — {{ crawl.imported_at[:10] }}
+          </span>
+          <form action="/admin/delete-website/{{ crawl_id }}" method="post"
+                style="display:inline"
+                onsubmit="return confirm('Supprimer tout le site {{ crawl.domain }} ({{ crawl.pages | length }} pages) ?');">
+            <button type="submit" class="btn-delete" title="Tout supprimer">Tout supprimer</button>
+          </form>
+        </summary>
+        <ul class="crawl-pages">
+          {% for page in crawl.pages %}
+          <li class="crawl-page">
+            <span class="page-title">{{ page.title or page.filename }}</span>
+            <span class="page-url">{{ page.url }}</span>
+            <form action="/admin/delete-webpage/{{ page.filename | urlencode }}" method="post"
+                  style="display:inline"
+                  onsubmit="return confirm('Supprimer {{ page.title or page.filename }} ?');">
+              <button type="submit" class="btn-delete btn-sm" title="Supprimer cette page">Supprimer</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- ─── Section liste des fichiers ─────────────────────────────────── -->
+    <section class="admin-card">
+      <h2>📂 Fichiers importes</h2>
 
       {% if files %}
       <ul class="file-list">
         {% for f in files %}
         <li>
           <span class="file-name">{{ f }}</span>
-
-          <!--
-            Bouton de suppression.
-            Envoie un POST vers /admin/delete/{nom_fichier}.
-            Une confirmation JavaScript est demandée avant la soumission.
-          -->
           <form action="/admin/delete/{{ f | urlencode }}" method="post"
                 style="display:inline"
                 onsubmit="return confirm('Supprimer {{ f }} ?');">
-            <button type="submit" class="btn-delete" title="Supprimer">
-              Supprimer
-            </button>
+            <button type="submit" class="btn-delete" title="Supprimer">Supprimer</button>
           </form>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <!-- Message affiche quand aucun fichier n'est importe -->
       <p class="empty-state">Aucun document importe pour le moment.</p>
       {% endif %}
     </section>

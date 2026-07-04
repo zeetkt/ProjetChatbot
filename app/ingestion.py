@@ -14,13 +14,28 @@ Ajouter un nouveau format de fichier :
 1. Creer une fonction _parse_nouveau_format(filepath) -> str
 2. Ajouter l'extension dans ALLOWED_EXTENSIONS dans config.py
 3. Ajouter un appel a la nouvelle fonction dans parse_file()
+
+Import de sites web :
+- _fetch_page()   : telecharge une page web via HTTP
+- _crawl_website(): parcourt un site en BFS (profondeur, max pages)
+- _sanitize_url_path(): convertit une URL en nom de fichier lisible
+- ingest_url()    : point d'entree principal (crawl + sauvegarde + indexation)
+- Les metadonnees de crawl sont stockees dans .web_crawls.json
+- Les pages sont sauvegardees en .html dans documents/
 """
 
 import os
 import re
+import json
+import secrets
+import time as time_module
+import logging
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 import app.config as cfg
 from app.database import add_document_chunks
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Parsing des fichiers ──────────────────────────────────────────────────────
@@ -301,6 +316,8 @@ def ingest_directory(directory: str = None) -> dict[str, int]:
     if not os.path.isdir(directory):
         return results
     for fname in sorted(os.listdir(directory)):
+        if fname.startswith("."):
+            continue
         fpath = os.path.join(directory, fname)
         if os.path.isfile(fpath) and Path(fname).suffix.lower() in cfg.ALLOWED_EXTENSIONS:
             try:
@@ -309,3 +326,283 @@ def ingest_directory(directory: str = None) -> dict[str, int]:
             except Exception as e:
                 results[fname] = f"Erreur : {e}"
     return results
+
+
+# ─── Import de pages web / sites ───────────────────────────────────────────────
+
+def _is_private_url(url: str) -> bool:
+    """Verifie qu'une URL ne pointe pas vers une IP privee/reservee (anti-SSRF)."""
+    import socket
+    import ipaddress
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return True
+    # Resout le hostname en IPs
+    try:
+        addrs = socket.getaddrinfo(hostname, None)
+    except Exception:
+        return True  # Si on ne peut pas resoudre, on bloque par securite
+    for addr in addrs:
+        ip_str = addr[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return True
+            # Cloud metadata / liens locaux
+            if str(ip) == "169.254.169.254":
+                return True
+        except ValueError:
+            return True
+    return False
+
+
+def _fetch_page(url: str) -> str | None:
+    """Telecharge une page web et retourne son HTML (ou None si erreur)."""
+    import httpx
+    if _is_private_url(url):
+        logger.warning("Blocage SSRF: %s", url)
+        return None
+    try:
+        with httpx.Client(timeout=30, follow_redirects=False) as client:
+            current_url = url
+            for _ in range(10):
+                resp = client.get(
+                    current_url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; SchoolBot/1.0)"},
+                )
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    current_url = str(resp.headers.get("location", ""))
+                    if not current_url or _is_private_url(current_url):
+                        logger.warning("Blocage SSRF redirect: %s", current_url)
+                        return None
+                    continue
+                resp.raise_for_status()
+                return resp.text
+            logger.warning("Trop de redirections: %s", url)
+            return None
+    except Exception as e:
+        logger.warning("Erreur fetch %s: %s", url, e)
+        return None
+
+
+def _sanitize_url_path(url: str) -> str:
+    """Convertit un chemin d'URL en nom de fichier lisible."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.replace("www.", "")
+    path = parsed.path.strip("/")
+    if not path:
+        path = "index"
+    safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", path)
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    return domain, safe
+
+
+def _crawl_website(
+    start_url: str,
+    max_pages: int = 50,
+    max_depth: int = 2,
+) -> list[dict]:
+    """
+    Parcourt un site web en BFS jusqu'a max_pages pages et max_depth profondeur.
+
+    Retourne une liste de dicts :
+        {url, title, text_content, relative_path, depth}
+    """
+    from bs4 import BeautifulSoup
+    parsed_start = urlparse(start_url)
+    base_domain = parsed_start.netloc.replace("www.", "")
+
+    visited: set[str] = set()
+    pages: list[dict] = []
+    queue: list[tuple[str, int]] = [(start_url, 0)]
+
+    while queue and len(pages) < max_pages:
+        url, depth = queue.pop(0)
+        norm_url = url.rstrip("/")
+        if norm_url in visited:
+            continue
+        visited.add(norm_url)
+
+        logger.info("Crawl [%d/%d] profondeur=%d: %s", len(pages) + 1, max_pages, depth, url)
+        html = _fetch_page(url)
+        if html is None:
+            continue
+
+        soup = BeautifulSoup(html, "html.parser")
+        title = ""
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+
+        domain, rel_path = _sanitize_url_path(url)
+        pages.append({
+            "url": url,
+            "title": title,
+            "text_content": text,
+            "relative_path": rel_path,
+            "depth": depth,
+        })
+
+        if depth < max_depth and len(pages) < max_pages:
+            for a_tag in soup.find_all("a", href=True):
+                href = a_tag["href"].strip()
+                abs_url = urljoin(url, href)
+                parsed = urlparse(abs_url)
+                # Même domaine, protocole http(s), pas de fragments
+                if parsed.netloc.replace("www.", "") != base_domain:
+                    continue
+                if parsed.scheme not in ("http", "https"):
+                    continue
+                if parsed.fragment:
+                    continue
+                # Ignore les téléchargements
+                ext = Path(parsed.path).suffix.lower()
+                if ext in (".pdf", ".docx", ".doc", ".zip", ".rar", ".mp4", ".mp3", ".png", ".jpg", ".jpeg", ".gif"):
+                    continue
+                normal = abs_url.rstrip("/")
+                if normal not in visited and (normal, depth + 1) not in queue:
+                    queue.append((normal, depth + 1))
+
+        time_module.sleep(cfg.WEB_CRAWL_DELAY)
+
+    return pages
+
+
+# ─── Gestion des métadonnées de crawls ────────────────────────────────────────
+
+_WEB_CRAWLS_FILE = ".web_crawls.json"
+
+
+def _load_web_crawls() -> dict:
+    """Charge le fichier de métadonnées des crawls."""
+    path = os.path.join(cfg.DOCUMENTS_PATH, _WEB_CRAWLS_FILE)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning("Erreur chargement %s: %s", _WEB_CRAWLS_FILE, e)
+        return {}
+
+
+def _save_web_crawls(data: dict) -> None:
+    """Sauvegarde le fichier de métadonnées des crawls."""
+    os.makedirs(cfg.DOCUMENTS_PATH, exist_ok=True)
+    path = os.path.join(cfg.DOCUMENTS_PATH, _WEB_CRAWLS_FILE)
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception as e:
+        logger.error("Erreur sauvegarde %s: %s", _WEB_CRAWLS_FILE, e)
+
+
+def remove_web_crawl(crawl_id: str) -> list[str]:
+    """Supprime tous les fichiers d'un crawl et retourne la liste des noms."""
+    data = _load_web_crawls()
+    crawl = data.pop(crawl_id, None)
+    if not crawl:
+        return []
+    filenames = [p["filename"] for p in crawl.get("pages", [])]
+    for fname in filenames:
+        fpath = os.path.join(cfg.DOCUMENTS_PATH, fname)
+        if os.path.isfile(fpath):
+            os.remove(fpath)
+    _save_web_crawls(data)
+    return filenames
+
+
+def remove_webpage_from_crawl(filename: str) -> str | None:
+    """Supprime une page d'un crawl. Retourne le crawl_id modifie ou None."""
+    data = _load_web_crawls()
+    for crawl_id, crawl in data.items():
+        for i, page in enumerate(crawl.get("pages", [])):
+            if page["filename"] == filename:
+                crawl["pages"].pop(i)
+                _save_web_crawls(data)
+                return crawl_id
+    return None
+
+
+# ─── Ingestion d'une page web ─────────────────────────────────────────────────
+
+def ingest_url(
+    url: str,
+    max_pages: int | None = None,
+    max_depth: int | None = None,
+) -> dict:
+    """
+    Importe une page web (ou un site complet) dans la base de connaissances.
+
+    Etape :
+    1. Crawle le site (BFS) jusqu'a max_pages pages.
+    2. Sauvegarde chaque page en fichier HTML dans documents/.
+    3. Indexe chaque fichier dans ChromaDB.
+    4. Enregistre les metadonnees du crawl (.web_crawls.json).
+
+    Args:
+        url: URL de depart.
+        max_pages: Nombre max de pages a crawler (defaut: cfg.WEB_CRAWL_MAX_PAGES).
+        max_depth: Profondeur max de crawl (defaut: cfg.WEB_CRAWL_MAX_DEPTH).
+
+    Returns:
+        dict: {"crawl_id": str, "pages": int, "results": {filename: chunk_count}}
+    """
+    max_pages = max_pages or cfg.WEB_CRAWL_MAX_PAGES
+    max_depth = max_depth or cfg.WEB_CRAWL_MAX_DEPTH
+
+    crawl_id = secrets.token_hex(4)
+    pages = _crawl_website(url, max_pages=max_pages, max_depth=max_depth)
+    if not pages:
+        return {"crawl_id": crawl_id, "pages": 0, "results": {}}
+
+    os.makedirs(cfg.DOCUMENTS_PATH, exist_ok=True)
+    domain = _sanitize_url_path(url)[0]
+    results = {}
+
+    for page in pages:
+        rel_path = page["relative_path"]
+        filename = f"{domain}__{rel_path}__{crawl_id}.html"
+        filepath = os.path.join(cfg.DOCUMENTS_PATH, filename)
+        html_content = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>{page["title"]}</title></head>
+<body><pre>{page["text_content"]}</pre></body>
+</html>"""
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        try:
+            count = ingest_file(filepath)
+            results[filename] = count
+        except Exception as e:
+            results[filename] = f"Erreur : {e}"
+
+        page["filename"] = filename
+
+    # Met à jour les métadonnées
+    data = _load_web_crawls()
+    data[crawl_id] = {
+        "domain": domain,
+        "url": url,
+        "imported_at": time_module.strftime("%Y-%m-%dT%H:%M:%S"),
+        "max_pages": max_pages,
+        "max_depth": max_depth,
+        "pages": [
+            {
+                "filename": p["filename"],
+                "url": p["url"],
+                "title": p["title"],
+                "depth": p["depth"],
+            }
+            for p in pages
+        ],
+    }
+    _save_web_crawls(data)
+
+    return {"crawl_id": crawl_id, "pages": len(pages), "results": results}
