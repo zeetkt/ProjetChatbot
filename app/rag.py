@@ -164,14 +164,14 @@ async def ask(
             return
 
     # Etape 1 : RETRIEVAL - recherche les chunks pertinents dans ChromaDB
-    # On cherche large (k=25) pour couvrir plusieurs sources, puis on
-    # diversifie : max 4 chunks par document source. Si un sujet est
-    # detecte (CDA, TSSR...), on lance aussi une seconde requete avec
-    # le nom du sujet pour recuperer plus de chunks du document cible.
+    # Les documents REAC contiennent beaucoup de texte boiteux (definitions
+    # repetees), donc on cherche tres large (k=50) pour trouver assez de
+    # chunks uniques apres deduplication et diversification par source.
+    # Si un sujet est detecte (CDA, TSSR...), on lance une seconde requete.
     topic = _detect_topic(question)
-    context_chunks = search_similar(question, k=25)
+    context_chunks = search_similar(question, k=50)
     if topic:
-        extra = search_similar(topic, k=15)
+        extra = search_similar(topic, k=25)
         context_chunks = _merge_dedup(context_chunks, extra)
     context_chunks = _diversify_chunks(context_chunks, topic=topic, max_per_source=4)
 
