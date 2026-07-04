@@ -88,3 +88,13 @@ async def startup():
         terminee avant que l'application ne commence a servir des requetes.
     """
     ingest_directory(cfg.DOCUMENTS_PATH)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Nettoie les ressources au shutdown (Playwright browser)."""
+    try:
+        from app.browser import close as close_browser
+        close_browser()
+    except Exception:
+        pass

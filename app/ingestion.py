@@ -398,6 +398,38 @@ def _sanitize_url_path(url: str) -> str:
     return domain, safe
 
 
+def _is_spa(html: str) -> bool:
+    """Detecte si une page est une SPA (JS-rendered, contenu quasi vide sans JS)."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    # Points de montage SPA classiques
+    if soup.select("#app, #root, #__next, #__nuxt"):
+        return True
+    # Si < 500 chars de texte et presences de scripts externes
+    has_scripts = bool(soup.find_all("script", src=True))
+    if not has_scripts:
+        return False
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    text = soup.get_text(strip=True)
+    return len(text) < 500
+
+
+def _get_page_html(url: str) -> str | None:
+    """Recupere le HTML d'une page, avec fallback headless si SPA."""
+    html = _fetch_page(url)
+    if html and _is_spa(html):
+        logger.info("SPA detectee, rendu headless: %s", url)
+        try:
+            from app.browser import render_page
+            rendered = render_page(url)
+            if rendered:
+                return rendered
+        except Exception as e:
+            logger.warning("Erreur rendu headless %s: %s", url, e)
+    return html
+
+
 def _crawl_website(
     start_url: str,
     max_pages: int = 50,
@@ -425,7 +457,7 @@ def _crawl_website(
         visited.add(norm_url)
 
         logger.info("Crawl [%d/%d] profondeur=%d: %s", len(pages) + 1, max_pages, depth, url)
-        html = _fetch_page(url)
+        html = _get_page_html(url)
         if html is None:
             continue
 
@@ -451,14 +483,12 @@ def _crawl_website(
                 href = a_tag["href"].strip()
                 abs_url = urljoin(url, href)
                 parsed = urlparse(abs_url)
-                # Même domaine, protocole http(s), pas de fragments
                 if parsed.netloc.replace("www.", "") != base_domain:
                     continue
                 if parsed.scheme not in ("http", "https"):
                     continue
                 if parsed.fragment:
                     continue
-                # Ignore les téléchargements
                 ext = Path(parsed.path).suffix.lower()
                 if ext in (".pdf", ".docx", ".doc", ".zip", ".rar", ".mp4", ".mp3", ".png", ".jpg", ".jpeg", ".gif"):
                     continue
