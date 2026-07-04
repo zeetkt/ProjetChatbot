@@ -37,7 +37,8 @@ OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
 # Identifiant du modele utilise sur OpenRouter.
 # openai/gpt-4o : modele OpenAI GPT-4o, performant et multilingue.
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o")
+# qwen/qwen3.7-max : modele Qwen 3.7 Max, bon pour le code et le multi-turn.
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.7-max")
 
 # URL de base de l'API OpenRouter.
 # L'API OpenRouter est compatible avec le format OpenAI, donc on utilise
