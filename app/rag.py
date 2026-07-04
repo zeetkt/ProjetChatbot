@@ -25,9 +25,12 @@ Filtrage :
 """
 
 import logging
+import os
 import re
+from pathlib import Path
 from typing import AsyncGenerator
 from openai import AuthenticationError, APIConnectionError, RateLimitError
+import app.config as cfg
 from app.database import search_similar
 from app.llm import generate_answer
 
@@ -51,28 +54,45 @@ OFFENSIVE_PATTERNS = [
 ]
 
 # ─── Filtrage intelligent des documents par sujet ────────────────────────────
-# Associe des mots-cles aux noms de documents pour ameliorer le RAG.
-# Quand la question contient un mot-cle, on donne la priorite aux chunks
-# du document correspondant via un filtre ChromaDB.
-_TOPIC_KEYWORDS: dict[str, str] = {
-    "cda": "CDA",
-    "concepteur développeur": "CDA",
-    "tssr": "TSSR",
-    "technicien supérieur systèmes et réseaux": "TSSR",
-    "samba": "Samba",
-    "référentiel": "REAC",
-    "reac": "REAC",
-    "ais": "AIS",
-    "administrateur d'infrastructures sécurisées": "AIS",
-}
+# Au lieu de mots-cles en dur, on extrait automatiquement les slugs de sujets
+# depuis les noms de fichiers dans le dossier documents. Par exemple :
+#   "REAC_CDA_V04_24052023.pdf" → extrait "CDA", "REAC"
+#   "2.2.1 - Cours - TP - Samba_V2023.docx" → extrait "Samba"
+# Cela permet d'ajouter des documents sans modifier le code.
+_GENERIC_WORDS = frozenset({
+    "cours", "tp", "td", "exo", "corrige", "v0", "v1", "v2", "v3", "v4",
+    "v5", "new", "old", "draft", "final", "revision", "reac",
+})
+
+
+def _get_file_slugs() -> dict[str, str]:
+    """Extrait des mots-cles de sujet depuis les noms de fichiers documents."""
+    slugs: dict[str, str] = {}
+    docs_path = cfg.DOCUMENTS_PATH
+    if not os.path.isdir(docs_path):
+        return slugs
+    for fname in os.listdir(docs_path):
+        name = Path(fname).stem
+        parts = re.split(r'[_\-.\s]+', name)
+        for part in parts:
+            word = part.strip()
+            lo = word.lower()
+            if (word.isalpha() and len(lo) >= 3
+                    and lo not in _GENERIC_WORDS
+                    and lo not in slugs):
+                slugs[lo] = word  # garde la casse originale
+    return slugs
 
 
 def _detect_topic(question: str, history: list[dict] | None = None) -> str | None:
     q = question.lower()
-    for keyword, doc_slug in _TOPIC_KEYWORDS.items():
+
+    # 1. Mots-cles extraits automatiquement des noms de fichiers
+    for keyword, slug in _get_file_slugs().items():
         if keyword in q:
-            return doc_slug
-    # Heritage du topic depuis l historiqe conversationnel
+            return slug
+
+    # 2. Heritage depuis l'historique conversationnel
     if history:
         for msg in reversed(history):
             if msg.get("role") == "user":
