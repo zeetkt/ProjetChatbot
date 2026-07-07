@@ -25,6 +25,7 @@ from app.auth import require_auth
 from app.security import limiter
 from app.ingestion import ingest_file, ingest_url, remove_web_crawl, remove_webpage_from_crawl, _load_web_crawls
 from app.database import get_document_count, delete_document_by_sources
+from app.rag import clear_file_cache
 from app.chat_logger import get_logs, clear_logs
 from app.auth import check_log_access, set_log_access
 
@@ -118,6 +119,7 @@ async def upload_files(
 
             dest = _validate_and_save_file(content, safe_filename)
             chunk_count = ingest_file(dest)
+            clear_file_cache()
             results.append({
                 "name": safe_filename,
                 "success": True,
@@ -154,6 +156,7 @@ async def import_url(
 
     try:
         result = await ingest_url(url, max_pages=max_pages, max_depth=depth)
+        clear_file_cache()
         n = result.get("pages", 0)
         if n == 0:
             msg = f"Aucune page n'a pu etre importee depuis {url}."
@@ -192,6 +195,7 @@ async def delete_file(
 
     # Nettoie les métadonnées de crawl si besoin
     remove_webpage_from_crawl(safe_name)
+    clear_file_cache()
 
     ctx = _get_admin_context(
         request,
@@ -218,6 +222,7 @@ async def delete_webpage(
     if os.path.isfile(filepath):
         os.remove(filepath)
     remove_webpage_from_crawl(safe_name)
+    clear_file_cache()
 
     ctx = _get_admin_context(
         request,
@@ -239,6 +244,7 @@ async def delete_website(
     total = 0
     for fname in filenames:
         total += delete_document_by_sources([fname])
+    clear_file_cache()
 
     ctx = _get_admin_context(
         request,

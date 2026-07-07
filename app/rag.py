@@ -28,6 +28,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from functools import lru_cache
 from typing import AsyncGenerator
 from openai import AuthenticationError, APIConnectionError, RateLimitError
 import app.config as cfg
@@ -73,6 +74,13 @@ _TOPIC_OVERRIDES = {
 }
 
 
+def clear_file_cache() -> None:
+    """Vide le cache des slugs et sources de fichiers apres import/suppression."""
+    _get_file_slugs.cache_clear()
+    _get_file_sources.cache_clear()
+
+
+@lru_cache(maxsize=1)
 def _get_file_slugs() -> dict[str, str]:
     """Extrait des mots-cles de sujet depuis les noms de fichiers documents."""
     slugs: dict[str, str] = {}
@@ -92,6 +100,7 @@ def _get_file_slugs() -> dict[str, str]:
     return slugs
 
 
+@lru_cache(maxsize=1)
 def _get_file_sources() -> dict[str, list[str]]:
     """slug → [fichiers_source] pour le filtrage par source dans ChromaDB."""
     sources: dict[str, list[str]] = {}

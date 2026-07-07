@@ -23,6 +23,7 @@ Fonctionnalites :
 """
 
 import os
+import hashlib
 import logging
 import chromadb
 import chromadb.config
@@ -175,16 +176,17 @@ def add_document_chunks(chunks: list[str], metadata_list: list[dict]) -> list[st
     """
     collection = get_collection()
 
-    # Genere un identifiant unique pour chaque chunk base sur son contenu
-    ids = [f"doc_{hash(chunk)}_{i}" for i, chunk in enumerate(chunks)]
+    # Genere un identifiant deterministe pour chaque chunk
+    # hashlib.sha256 est utilise (et non hash()) car python hash() est
+    # randomise par processus (PYTHONHASHSEED) et produirait des IDs
+    # differents a chaque redemarrage.
+    ids = [
+        f"doc_{hashlib.sha256(chunk.encode('utf-8')).hexdigest()[:16]}_{i}"
+        for i, chunk in enumerate(chunks)
+    ]
 
-    # Supprime les eventuels doublons (meme contenu deja indexe)
-    existing = collection.get(ids=ids)
-    if existing["ids"]:
-        collection.delete(ids=existing["ids"])
-
-    # Ajoute les nouveaux chunks a la collection
-    collection.add(documents=chunks, metadatas=metadata_list, ids=ids)
+    # Ajoute ou remplace les chunks (upsert atomique)
+    collection.upsert(documents=chunks, metadatas=metadata_list, ids=ids)
     return ids
 
 

@@ -25,8 +25,8 @@ SESSION_MAX_AGE = 86400
 
 # Mot de passe pour acceder aux logs de conversation.
 # Protection supplementaire par-dessus l'authentification du chat.
-# Surchargeable via la variable d'environnement LOGS_PASSWORD.
-LOGS_PASSWORD = os.environ.get("LOGS_PASSWORD", "Azerty78")
+# Doit etre defini dans le fichier .env (variable LOGS_PASSWORD).
+LOGS_PASSWORD = os.environ["LOGS_PASSWORD"]
 
 # Cle secrete utilisee par itsdangerous pour signer les cookies de session.
 # Cette cle permet de verifier que le cookie n'a pas ete modifie par le client.

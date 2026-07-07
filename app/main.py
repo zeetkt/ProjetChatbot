@@ -21,6 +21,7 @@ Ordre des routeurs important :
 
 import os
 import logging
+import asyncio
 from fastapi import FastAPI, Request
 
 logging.basicConfig(level=logging.INFO)
@@ -76,21 +77,7 @@ app.include_router(admin_router.router)  # /admin, /admin/upload, /admin/delete/
 
 @app.on_event("startup")
 async def startup():
-    """
-    Initialisation executee au demarrage de l'application.
-
-    Actions :
-    - Parcourt le dossier documents/ et re-indexe automatiquement tous
-      les fichiers qui y sont presents. Cela permet de conserver les
-      donnees entre les redemarrages (les fichiers uploads persistent
-      grace au volume Docker monte sur /app/documents).
-
-    Note :
-        ingest_directory() est synchrone mais appelee dans un contexte
-        asynchrone. C'est volontaire : l'indexation initiale doit etre
-        terminee avant que l'application ne commence a servir des requetes.
-    """
-    ingest_directory(cfg.DOCUMENTS_PATH)
+    await asyncio.to_thread(ingest_directory, cfg.DOCUMENTS_PATH)
 
 
 @app.on_event("shutdown")

@@ -14,6 +14,7 @@ Securite :
 - Si l'utilisateur est deja connecte, il est redirige vers le chat
 """
 
+import secrets
 from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -88,7 +89,7 @@ async def login_post(
     Returns:
         HTMLResponse: Redirection vers / si succes, ou page de login avec erreur.
     """
-    if password == cfg.CHAT_PASSWORD:
+    if secrets.compare_digest(password, cfg.CHAT_PASSWORD):
         # Mot de passe correct → creation de la session
         token, session_id = create_session_token()
         response = RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
