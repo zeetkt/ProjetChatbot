@@ -16,8 +16,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Connexion - Chatbot Ecole</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .theme-btn { position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:16px; transition:background .2s; }
+    .theme-btn:hover { background:rgba(255,255,255,0.2); }
+  </style>
 </head>
 <body class="login-body">
+  <button class="theme-btn" id="theme-btn" title="Changer le theme">🌙</button>
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
@@ -48,5 +53,28 @@
       </form>
     </div>
   </div>
+
+  <script>
+    (function() {
+      const btn = document.getElementById('theme-btn');
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      if (btn) {
+        btn.textContent = saved === 'dark' ? '☀️' : '🌙';
+        btn.addEventListener('click', function() {
+          const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+          if (isDark) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'light');
+            btn.textContent = '🌙';
+          } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+            btn.textContent = '☀️';
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

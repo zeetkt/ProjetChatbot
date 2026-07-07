@@ -27,6 +27,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chatbot Ecole</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .theme-btn { background:none; border:1px solid #a8d8ea; color:#a8d8ea; padding:4px 10px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; transition:background .2s,color .2s; }
+    .theme-btn:hover { background:#a8d8ea; color:#1a1a2e; }
+    [data-theme="dark"] .theme-btn { border-color:#5b9bd5; color:#5b9bd5; }
+    [data-theme="dark"] .theme-btn:hover { background:#5b9bd5; color:#0f0f1a; }
+  </style>
 </head>
 <body>
   <!-- ─── Barre de navigation ──────────────────────────────────────────── -->
@@ -36,6 +42,7 @@
       <span class="doc-badge" title="Documents indexes">
         {{ document_count }} docs
       </span>
+      <button class="theme-btn" id="theme-btn" title="Changer le theme">🌙</button>
       <a href="/admin" class="nav-link">Admin</a>
       <a href="/logout" class="nav-link">Deconnexion</a>
     </div>
@@ -200,6 +207,29 @@
       input.disabled = false;
       input.focus();
     });
+  </script>
+
+  <script>
+    (function() {
+      const btn = document.getElementById('theme-btn');
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      if (btn) {
+        btn.textContent = saved === 'dark' ? '☀️' : '🌙';
+        btn.addEventListener('click', function() {
+          const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+          if (isDark) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'light');
+            btn.textContent = '🌙';
+          } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+            btn.textContent = '☀️';
+          }
+        });
+      }
+    })();
   </script>
 </body>
 </html>
