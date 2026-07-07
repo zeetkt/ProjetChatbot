@@ -20,6 +20,11 @@ def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dic
         return chunks
 
     model = get_reranker()
+    # Filtrer les chunks sans contenu (None)
+    chunks = [c for c in chunks if c.get("content")]
+    if not chunks:
+        return chunks
+
     pairs = [[query, c["content"]] for c in chunks]
     scores = model.predict(pairs, show_progress_bar=False)
 
