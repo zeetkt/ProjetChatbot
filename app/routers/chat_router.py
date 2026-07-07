@@ -53,7 +53,7 @@ class ChatRequest(BaseModel):
     """
     message: str
     model: str | None = None
-    use_safety: bool = False
+    use_safety: bool = True
 
 
 @router.get("/", response_class=HTMLResponse)

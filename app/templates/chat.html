@@ -121,10 +121,10 @@
       modelSelect.addEventListener('change', () => localStorage.setItem('selectedModel', modelSelect.value));
     }
 
-    // Restaure l'etat Nemotron
-    const savedSafety = localStorage.getItem('useSafety');
+    // Restaure l'etat Nemotron (par defaut: ON)
     if (safetyCheck) {
-      safetyCheck.checked = savedSafety === 'true';
+      const saved = localStorage.getItem('useSafety');
+      safetyCheck.checked = saved !== null ? saved === 'true' : true;
       safetyCheck.addEventListener('change', () => localStorage.setItem('useSafety', safetyCheck.checked));
     }
 
