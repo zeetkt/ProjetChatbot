@@ -151,9 +151,11 @@ def _merge_dedup(a: list[dict], b: list[dict]) -> list[dict]:
     seen = set()
     result = a[:]
     for c in result:
-        seen.add(_prefix(c["content"]))
+        content = c.get("content") or ""
+        seen.add(_prefix(content))
     for c in b:
-        p = _prefix(c["content"])
+        content = c.get("content") or ""
+        p = _prefix(content)
         if p not in seen:
             seen.add(p)
             result.append(c)
@@ -186,7 +188,7 @@ def _diversify_chunks(
             src = c["metadata"].get("source", "")
             if src not in per_source:
                 per_source[src] = []
-            p = _prefix(c["content"])
+            p = _prefix(c.get("content") or "")
             if p not in seen:
                 seen.add(p)
                 per_source[src].append(c)
