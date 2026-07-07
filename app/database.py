@@ -231,6 +231,14 @@ def search_similar(query: str, k: int = 5, where: dict | None = None) -> list[di
     return documents
 
 
+def deduplicate_collection() -> None:
+    """Force une deduplication complete de la collection (apres ingest)."""
+    global _dedup_done
+    _dedup_done = False
+    collection = get_collection()
+    _dedup_done = True
+
+
 def get_document_count() -> int:
     """
     Retourne le nombre total de chunks indexes dans la collection.

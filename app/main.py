@@ -35,6 +35,7 @@ from app.security import limiter, SecurityHeadersMiddleware
 from app.auth import verify_session
 from app.routers import auth_router, chat_router, admin_router
 from app.ingestion import ingest_directory
+from app.database import deduplicate_collection
 
 # ─── Creation de l'application FastAPI ─────────────────────────────────────────
 app = FastAPI(
@@ -78,6 +79,9 @@ app.include_router(admin_router.router)  # /admin, /admin/upload, /admin/delete/
 @app.on_event("startup")
 async def startup():
     await asyncio.to_thread(ingest_directory, cfg.DOCUMENTS_PATH)
+    # Dedupe a nouveau apres l'ingest pour nettoyer les doublons crees
+    # par des changements de scheme d'IDs (hash -> sha256)
+    await asyncio.to_thread(deduplicate_collection)
 
 
 @app.on_event("shutdown")
