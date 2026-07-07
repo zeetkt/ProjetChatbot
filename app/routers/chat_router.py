@@ -53,6 +53,7 @@ class ChatRequest(BaseModel):
     """
     message: str
     model: str | None = None
+    use_safety: bool = False
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -114,7 +115,7 @@ async def chat_api(
 
     # Lance le streaming avec journalisation et sauvegarde d'historique
     return StreamingResponse(
-        _stream_and_log(question, history, session_id, model=body.model),
+        _stream_and_log(question, history, session_id, model=body.model, use_safety=body.use_safety),
         media_type="text/event-stream",
     )
 
@@ -126,6 +127,7 @@ async def _stream_and_log(
     history: list[dict],
     session_id: str,
     model: str | None = None,
+    use_safety: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Streame la reponse RAG et journalise la conversation a la fin.
@@ -148,7 +150,7 @@ async def _stream_and_log(
     full_answer = ""
 
     # Collecte les tokens generes par le pipeline RAG (avec historique)
-    async for token in ask(question, history=history, model=model):
+    async for token in ask(question, history=history, model=model, use_safety=use_safety):
         full_answer += token
         yield f"data: {json.dumps({'token': token})}\n\n"
 

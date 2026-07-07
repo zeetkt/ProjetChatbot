@@ -36,6 +36,15 @@
     .model-select option { background:#1a1a2e; color:#eee; }
     [data-theme="dark"] .model-select { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
     [data-theme="dark"] .model-select option { background:#0f0f1a; color:#ccc; }
+    .safety-toggle { display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:13px; user-select:none; }
+    .safety-toggle input { display:none; }
+    .safety-toggle .slider { width:32px; height:18px; background:rgba(255,255,255,0.15); border-radius:9px; position:relative; transition:background .2s; flex-shrink:0; }
+    .safety-toggle .slider::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; background:#a8d8ea; border-radius:50%; transition:transform .2s; }
+    .safety-toggle input:checked + .slider { background:#4caf50; }
+    .safety-toggle input:checked + .slider::after { transform:translateX(14px); }
+    .safety-toggle .safety-label { color:inherit; opacity:0.8; }
+    [data-theme="dark"] .safety-toggle .slider { background:rgba(255,255,255,0.1); }
+    [data-theme="dark"] .safety-toggle .slider::after { background:#5b9bd5; }
   </style>
 </head>
 <body>
@@ -53,6 +62,11 @@
         </option>
         {% endfor %}
       </select>
+      <label class="safety-toggle" id="safety-toggle" title="Filtre Nemotron">
+        <input type="checkbox" id="safety-check">
+        <span class="slider"></span>
+        <span class="safety-label">🛡️</span>
+      </label>
       <button class="theme-btn" id="theme-btn" title="Changer le theme">🌙</button>
       <a href="/admin" class="nav-link">Admin</a>
       <a href="/logout" class="nav-link">Deconnexion</a>
@@ -98,12 +112,20 @@
     const sendBtn = document.getElementById('send-btn');
     const messages = document.getElementById('chat-messages');
     const modelSelect = document.getElementById('model-select');
+    const safetyCheck = document.getElementById('safety-check');
 
     // Restaure le modele sauvegarde
     const savedModel = localStorage.getItem('selectedModel');
     if (savedModel && modelSelect) modelSelect.value = savedModel;
     if (modelSelect) {
       modelSelect.addEventListener('change', () => localStorage.setItem('selectedModel', modelSelect.value));
+    }
+
+    // Restaure l'etat Nemotron
+    const savedSafety = localStorage.getItem('useSafety');
+    if (safetyCheck) {
+      safetyCheck.checked = savedSafety === 'true';
+      safetyCheck.addEventListener('change', () => localStorage.setItem('useSafety', safetyCheck.checked));
     }
 
     /**
@@ -165,7 +187,7 @@
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: question, model: modelSelect ? modelSelect.value : undefined }),
+          body: JSON.stringify({ message: question, model: modelSelect ? modelSelect.value : undefined, use_safety: safetyCheck ? safetyCheck.checked : false }),
         });
 
         if (!response.ok) {

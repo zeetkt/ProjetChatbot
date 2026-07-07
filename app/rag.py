@@ -35,6 +35,7 @@ import app.config as cfg
 from app.database import search_similar
 from app.llm import generate_answer
 from app.reranker import rerank
+from app.safety import check_prompt_safety
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,7 @@ async def ask(
     question: str,
     history: list[dict] | None = None,
     model: str | None = None,
+    use_safety: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Point d'entree principal du pipeline RAG.
@@ -231,8 +233,13 @@ async def ask(
         un feedback utile a l'utilisateur. Les autres exceptions sont
         capturees generiquement pour eviter les erreurs 500 silencieuses.
     """
-    # Etape 0 : Pre-filtre - motifs interdits
-    # Note : le logging du refus est fait dans _stream_and_log (chat_router.py)
+    # Etape 0 : Pre-filtre - Nemotron (si active) puis motifs interdits
+    if use_safety:
+        safe = await check_prompt_safety(question)
+        if not safe:
+            yield "Je ne peux pas repondre a cette question."
+            return
+
     question_lower = question.lower()
     for pattern in OFFENSIVE_PATTERNS:
         if re.search(pattern, question_lower):
