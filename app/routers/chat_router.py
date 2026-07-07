@@ -35,6 +35,7 @@ from app.chat_logger import log_conversation, log_refused
 from app.database import get_document_count
 from app.rag import ask
 from app.chat_history import add_message, get_history
+import app.config as cfg
 
 # ─── Initialisation du routeur ─────────────────────────────────────────────────
 router = APIRouter()
@@ -47,9 +48,11 @@ class ChatRequest(BaseModel):
 
     Pydantic valide automatiquement les données envoyées par le client :
     - Le champ "message" doit etre present et etre une chaine de caracteres.
+    - Le champ "model" est optionnel (modele OpenRouter choisi par l'utilisateur).
     - Si le format JSON est invalide, FastAPI renvoie une erreur 422.
     """
     message: str
+    model: str | None = None
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -63,7 +66,12 @@ async def chat_page(request: Request):
         return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
     doc_count = get_document_count()
     return templates.TemplateResponse(
-        "chat.html", {"request": request, "document_count": doc_count}
+        "chat.html", {
+            "request": request,
+            "document_count": doc_count,
+            "models": cfg.AVAILABLE_MODELS,
+            "default_model": cfg.OPENROUTER_MODEL,
+        }
     )
 
 
@@ -106,7 +114,7 @@ async def chat_api(
 
     # Lance le streaming avec journalisation et sauvegarde d'historique
     return StreamingResponse(
-        _stream_and_log(question, history, session_id),
+        _stream_and_log(question, history, session_id, model=body.model),
         media_type="text/event-stream",
     )
 
@@ -117,6 +125,7 @@ async def _stream_and_log(
     question: str,
     history: list[dict],
     session_id: str,
+    model: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Streame la reponse RAG et journalise la conversation a la fin.
@@ -139,7 +148,7 @@ async def _stream_and_log(
     full_answer = ""
 
     # Collecte les tokens generes par le pipeline RAG (avec historique)
-    async for token in ask(question, history=history):
+    async for token in ask(question, history=history, model=model):
         full_answer += token
         yield f"data: {json.dumps({'token': token})}\n\n"
 

@@ -63,18 +63,19 @@ Regles :
 """.strip()
 
 
-async def generate_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
+async def generate_stream(messages: list[dict], model: str | None = None) -> AsyncGenerator[str, None]:
     """
     Envoie une conversation a OpenRouter et recupere la reponse en streaming.
     """
+    model = model or cfg.OPENROUTER_MODEL
     body = dict(
-        model=cfg.OPENROUTER_MODEL,
+        model=model,
         messages=messages,
         stream=True,
         temperature=0.3,
         max_tokens=4096,
     )
-    if "qwen" in cfg.OPENROUTER_MODEL:
+    if "qwen" in model:
         body["include_reasoning"] = True
 
     async with httpx.AsyncClient(timeout=120) as client:
@@ -120,6 +121,7 @@ async def generate_answer(
     question: str,
     context_chunks: list[dict],
     history: list[dict] | None = None,
+    model: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Génere une reponse a une question en utilisant le contexte RAG.
@@ -192,5 +194,5 @@ async def generate_answer(
     })
 
     # Envoie la requete et streame la reponse
-    async for token in generate_stream(messages):
+    async for token in generate_stream(messages, model=model):
         yield token

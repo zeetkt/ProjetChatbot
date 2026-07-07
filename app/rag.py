@@ -203,6 +203,7 @@ def _diversify_chunks(
 async def ask(
     question: str,
     history: list[dict] | None = None,
+    model: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Point d'entree principal du pipeline RAG.
@@ -274,7 +275,7 @@ async def ask(
 
     # Etape 2 : GENERATION - envoie le contexte + historique au LLM et streame la reponse
     try:
-        async for token in generate_answer(question, context_chunks, history=history):
+        async for token in generate_answer(question, context_chunks, history=history, model=model):
             yield token
     except AuthenticationError:
         yield "Erreur : la cle API OpenRouter n'est pas valide ou n'est pas configuree."

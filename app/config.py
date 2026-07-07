@@ -41,10 +41,20 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
 # Identifiant du modele utilise sur OpenRouter.
-# openai/gpt-4o : modele OpenAI GPT-4o, performant et multilingue.
-# qwen/qwen3.7-max : modele Qwen 3.7 Max, bon pour le code et le multi-turn.
-# Note : le .env du VPS surcharge cette valeur. A mettre a jour aussi.
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.7-max")
+# Note : le .env du VPS surcharge cette valeur.
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-3.5-flash")
+
+# Liste des modeles disponibles pour le selecteur dans l'interface chat.
+# Chaque entree : (id_openrouter, nom_affiche, prix_input_1M, prix_output_1M)
+AVAILABLE_MODELS = [
+    ("google/gemini-3.5-flash",        "Gemini 3.5 Flash",     "$1.50", "$9.00"),
+    ("qwen/qwen3.7-max",               "Qwen 3.7 Max",         "$1.25", "$3.75"),
+    ("google/gemma-4-26b-a4b-it",       "Gemma 4 26B A4B",     "$0.06", "$0.33"),
+    ("mistralai/mistral-small-3.2-24b-instruct", "Mistral Small 3.2", "$0.075", "$0.20"),
+    ("moonshotai/kimi-k2.6",            "Kimi K2.6",            "$0.68", "$3.42"),
+    ("z-ai/glm-5.2",                   "GLM 5.2",              "$0.93", "$3.00"),
+    ("deepseek/deepseek-v4-flash",      "DeepSeek V4 Flash",    "$0.09", "$0.18"),
+]
 
 # URL de base de l'API OpenRouter.
 # L'API OpenRouter est compatible avec le format OpenAI, donc on utilise

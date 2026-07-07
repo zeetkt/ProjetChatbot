@@ -27,11 +27,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chatbot Ecole</title>
   <link rel="stylesheet" href="/static/style.css">
-  <style>
+   <style>
     .theme-btn { background:none; border:1px solid #a8d8ea; color:#a8d8ea; padding:4px 10px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; transition:background .2s,color .2s; }
     .theme-btn:hover { background:#a8d8ea; color:#1a1a2e; }
     [data-theme="dark"] .theme-btn { border-color:#5b9bd5; color:#5b9bd5; }
     [data-theme="dark"] .theme-btn:hover { background:#5b9bd5; color:#0f0f1a; }
+    .model-select { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:inherit; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
+    .model-select option { background:#1a1a2e; color:#eee; }
+    [data-theme="dark"] .model-select { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+    [data-theme="dark"] .model-select option { background:#0f0f1a; color:#ccc; }
   </style>
 </head>
 <body>
@@ -42,6 +46,13 @@
       <span class="doc-badge" title="Documents indexes">
         {{ document_count }} docs
       </span>
+      <select class="model-select" id="model-select" title="Modele LLM">
+        {% for id, name, inp, out in models %}
+        <option value="{{ id }}" {% if id == default_model %}selected{% endif %}>
+          {{ name }} ({{ inp }}/{{ out }})
+        </option>
+        {% endfor %}
+      </select>
       <button class="theme-btn" id="theme-btn" title="Changer le theme">🌙</button>
       <a href="/admin" class="nav-link">Admin</a>
       <a href="/logout" class="nav-link">Deconnexion</a>
@@ -86,6 +97,14 @@
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const messages = document.getElementById('chat-messages');
+    const modelSelect = document.getElementById('model-select');
+
+    // Restaure le modele sauvegarde
+    const savedModel = localStorage.getItem('selectedModel');
+    if (savedModel && modelSelect) modelSelect.value = savedModel;
+    if (modelSelect) {
+      modelSelect.addEventListener('change', () => localStorage.setItem('selectedModel', modelSelect.value));
+    }
 
     /**
      * Ajoute un message a l'interface de chat.
@@ -146,7 +165,7 @@
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: question }),
+          body: JSON.stringify({ message: question, model: modelSelect ? modelSelect.value : undefined }),
         });
 
         if (!response.ok) {
