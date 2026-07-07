@@ -85,4 +85,4 @@ docker compose down
 - Login : https://bastien.casa/login
 - Admin : https://bastien.casa/admin
 - Logs : https://bastien.casa/admin/logs (mot de passe : Azerty78)
-- OpenRouter API : https://openrouter.ai/keys (modèle: google/gemini-3.5-flash)
+- OpenRouter API : https://openrouter.ai/keys (modèle: deepseek/deepseek-v4-flash)

@@ -42,7 +42,7 @@ OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
 # Identifiant du modele utilise sur OpenRouter.
 # Note : le .env du VPS surcharge cette valeur.
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-3.5-flash")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash")
 
 # Liste des modeles disponibles pour le selecteur dans l'interface chat.
 # Chaque entree : (id_openrouter, nom_affiche, prix_input_1M, prix_output_1M)

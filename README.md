@@ -74,7 +74,7 @@ Variables clés dans `.env` :
 | `CHAT_PASSWORD` | Mot de passe unique d'accès au chat |
 | `OPENROUTER_API_KEY` | Clé API OpenRouter |
 | `SECRET_KEY` | Clé pour signer les cookies |
-| `OPENROUTER_MODEL` | Modèle LLM (défaut: google/gemini-3.5-flash) |
+| `OPENROUTER_MODEL` | Modèle LLM (défaut: deepseek/deepseek-v4-flash) |
 | `LOGS_PASSWORD` | Mot de passe pour les logs (défaut: Azerty78) |
 
 ## Licence
