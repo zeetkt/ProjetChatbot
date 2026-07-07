@@ -157,8 +157,9 @@ async def _stream_and_log(
     yield "data: [DONE]\n\n"
 
     # Journalisation : refuse si le pre-filtre a bloque, normale sinon
-    REFUSED_PREFIX = "Je ne peux pas repondre"
-    if full_answer.startswith(REFUSED_PREFIX):
+    if full_answer.startswith("🛡️"):
+        log_refused(question, "pre-filtre: nemotron")
+    elif full_answer.startswith("Je ne peux pas repondre"):
         log_refused(question, "pre-filtre: motif interdit")
     else:
         log_conversation(question, full_answer)

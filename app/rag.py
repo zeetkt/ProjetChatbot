@@ -237,7 +237,7 @@ async def ask(
     if use_safety:
         safe = await check_prompt_safety(question)
         if not safe:
-            yield "Je ne peux pas repondre a cette question."
+            yield "🛡️ Cette question a ete bloquee par le filtre de securite."
             return
 
     question_lower = question.lower()
