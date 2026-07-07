@@ -7,7 +7,7 @@ Chatbot RAG (Retrieval Augmented Generation) pour une école. Les élèves posen
 - **Backend** : Python 3.12, FastAPI
 - **Vector DB** : ChromaDB 0.5+, sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2)
 - **Reranker** : Cross-encoder (mmarco-mMiniLMv2-L12-H384-v1)
-- **LLM** : OpenRouter (Mistral Small 3.2), streaming SSE
+- **LLM** : OpenRouter (google/gemini-3.5-flash), streaming SSE
 - **Frontend** : Jinja2 templates, CSS vanilla, JS natif (marked.js local pour Markdown)
 - **Déploiement** : Docker Compose, Caddy (reverse proxy + HTTPS Let's Encrypt)
 
@@ -61,7 +61,9 @@ Question → OFFENSIVE_PATTERNS (refus si match)
 - **Logs protégés** : mot de passe dédié pour accéder à l'historique des conversations
 - **Effacement logs** : bouton "Effacer les logs" avec confirmation
 - **Sécurité** : rate limiting (slowapi), CSP headers, HSTS, pré-filtre OFFENSIVE_PATTERNS, anti-injection (sandwich), anti-path-traversal, anti-SSRF, docs API désactivées en prod, cookie Secure
-- **Auth** : cookie signé (itsdangerous), 24h, HttpOnly + SameSite=Strict + Secure
+- **Auth** : cookie signé (itsdangerous), 24h, HttpOnly + SameSite=Strict + Secure, `secrets.compare_digest()`
+- **Déduplication** : IDs SHA256 déterministes, upsert atomique, dédup forcé en startup après ingest
+- **Dark mode** : bascule 🌙/☀️ avec persistance localStorage
 
 ## Configuration
 
@@ -72,7 +74,7 @@ Variables clés dans `.env` :
 | `CHAT_PASSWORD` | Mot de passe unique d'accès au chat |
 | `OPENROUTER_API_KEY` | Clé API OpenRouter |
 | `SECRET_KEY` | Clé pour signer les cookies |
-| `OPENROUTER_MODEL` | Modèle LLM (défaut: mistralai/mistral-small-3.2-24b-instruct) |
+| `OPENROUTER_MODEL` | Modèle LLM (défaut: google/gemini-3.5-flash) |
 | `LOGS_PASSWORD` | Mot de passe pour les logs (défaut: Azerty78) |
 
 ## Licence

@@ -1,28 +1,27 @@
 # Contexte du projet Chatbot Ecole
 
 ## Stack technique
-- **Backend** : Python 3.12, FastAPI, ChromaDB 0.5+, sentence-transformers, OpenRouter (Mistral Small 3.2)
-- **Frontend** : Jinja2 templates, CSS vanilla, JS natif (Streaming SSE, marked.js local)
+- **Backend** : Python 3.12, FastAPI, ChromaDB 0.5+, sentence-transformers, OpenRouter (google/gemini-3.5-flash)
+- **Frontend** : Jinja2 templates, CSS vanilla, JS natif (Streaming SSE, marked.js local), dark mode
 - **Déploiement** : Docker Compose, Caddy (reverse proxy + HTTPS Let's Encrypt), VPS OVH
 - **Auth** : Mot de passe unique (env CHAT_PASSWORD), session signée itsdangerous (24h)
 
 ## Architecture
-- **app/config.py** : toutes les variables de configuration (chemins, clés API, limites, reranker, LOGS_PASSWORD)
+- **app/config.py** : toutes les variables de configuration (chemins, clés API, limites, reranker, LOGS_PASSWORD obligatoire)
 - **app/security.py** : rate limiting (slowapi), middleware headers sécurité + CSP, validation HTML
 - **app/auth.py** : création/vérification de session signée (cookie HTTP-only SameSite=Strict Secure), log_access serializer
 - **app/embeddings.py** : wrapper sentence-transformers (compatible ChromaDB, paramètre `input`)
-- **app/database.py** : client ChromaDB persistant, collection singleton, déduplication startup, gestion des erreurs
-- **app/reranker.py** : cross-encoder (mmarco-mMiniLMv2-L12-H384-v1) pour reclasser les chunks
-- **app/llm.py** : client AsyncOpenAI → OpenRouter, prompt système avec 4 domaines autorisés + sandwich anti-injection, streaming, détection erreurs OpenRouter
+- **app/database.py** : client ChromaDB persistant, collection singleton, déduplication startup + post-ingest, gestion des erreurs, `deduplicate_collection()` force un second passage
+- **app/reranker.py** : cross-encoder (mmarco-mMiniLMv2-L12-H384-v1) pour reclasser les chunks, filtre `content: None`
+- **app/llm.py** : client AsyncOpenAI → OpenRouter, prompt système avec 4 domaines autorisés + sandwich anti-injection + règle "ne pas parler négativement de l'ADRAR/Pôle Numérique", streaming, détection erreurs OpenRouter
 - **app/ingestion.py** : parseurs PDF/DOCX/TXT/MD/HTML + chunking avec chevauchement + crawl web BFS avec Playwright
-- **app/rag.py** : pipeline ask() = pré-filtre OFFENSIVE_PATTERNS → search → topic_filter → rerank → diversify → generate_answer
+- **app/rag.py** : pipeline ask() = pré-filtre OFFENSIVE_PATTERNS → search → topic_filter → rerank → diversify → generate_answer, cache des slugs/sources avec invalidation
 - **app/chat_logger.py** : journalisation conversations (JSON Lines, un fichier par jour), clear_logs()
-- **app/browser.py** : Playwright Chromium headless (async API, singleton)
 
 ## Routers
-- **auth_router** : GET/POST /login, GET /logout (rate limit 5/min)
+- **auth_router** : GET/POST /login, GET /logout (rate limit 5/min), `secrets.compare_digest()`
 - **chat_router** : GET / (chat HTML), POST /api/chat (SSE streaming, rate limit 30/min)
-- **admin_router** : GET /admin, POST /admin/upload (multi-fichiers), POST /admin/import-url, POST /admin/delete/{filename}, GET/POST /admin/logs (protégé par LOGS_PASSWORD), POST /admin/logs/clear, POST /admin/delete-webpage/{filename}, POST /admin/delete-website/{crawl_id}
+- **admin_router** : GET /admin, POST /admin/upload (multi-fichiers), POST /admin/import-url, POST /admin/delete/{filename}, GET/POST /admin/logs (protégé par LOGS_PASSWORD), POST /admin/logs/clear, POST /admin/delete-webpage/{filename}, POST /admin/delete-website/{crawl_id}, invalidation cache fichiers
 
 ## Pipeline RAG complet
 ```
@@ -33,6 +32,16 @@ Question → OFFENSIVE_PATTERNS (refus si match)
   → diversify (max_per_source, max_total=12)
   → generate_answer (LLM avec contexte)
 ```
+
+## Bugs corrigés
+- `hash()` → `hashlib.sha256` pour les IDs de chunks (déterministe entre conteneurs)
+- `collection.upsert` remplace `get→delete→add` (atomicité, évite race condition)
+- `secrets.compare_digest()` pour la vérification du mot de passe
+- `LOGS_PASSWORD` obligatoire (plus de valeur par défaut `Azerty78`)
+- Cache `_get_file_slugs`/`_get_file_sources` avec `clear_file_cache()` après upload/delete
+- `ingest_directory` exécuté dans un thread pool (`asyncio.to_thread`) au démarrage
+- Crash `content: None` dans `_merge_dedup` et `reranker.py`
+- Dédup forcé APRÈS `ingest_directory` pour nettoyer les doublons créés par changement de scheme d'IDs
 
 ## Sécurité
 - **Pré-filtre regex** (OFFENSIVE_PATTERNS) : refuse les questions interdites avant tout appel LLM
@@ -76,4 +85,4 @@ docker compose down
 - Login : https://bastien.casa/login
 - Admin : https://bastien.casa/admin
 - Logs : https://bastien.casa/admin/logs (mot de passe : Azerty78)
-- OpenRouter API : https://openrouter.ai/keys (modèle: mistralai/mistral-small-3.2-24b-instruct)
+- OpenRouter API : https://openrouter.ai/keys (modèle: google/gemini-3.5-flash)
